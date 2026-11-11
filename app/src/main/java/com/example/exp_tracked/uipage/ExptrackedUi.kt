@@ -425,6 +425,7 @@ data class ExptrackedActions(
     val onPayeeConsumed: () -> Unit = {},
     /** Persist the choice (DataStore) and feed it back via DashboardUiState.themeMode. */
     val onSetThemeMode: (ThemeMode) -> Unit = {},
+    val onSetUserName: (String) -> Unit = {},
 )
 
 /* ============================================================================================
@@ -524,6 +525,7 @@ fun ExptrackedApp(
 ) {
     var tab by rememberSaveable { mutableStateOf(AppTab.HOME) }
     var showLimitDialog by rememberSaveable { mutableStateOf(false) }
+    var showNameDialog by rememberSaveable { mutableStateOf(false) }
     val stack = remember { mutableStateListOf<Route>() }
     val clipboard = LocalClipboardManager.current
     StatusBarIcons(darkIcons = stack.isEmpty() && !LocalExpPalette.current.isDark)
@@ -568,6 +570,7 @@ fun ExptrackedApp(
                         onEditLimit = { showLimitDialog = true },
                         onOpenCoach = { stack.add(Route.Coach) },
                         onThemeModeChange = actions.onSetThemeMode,
+                        onEditName = { showNameDialog = true },
                     )
                 }
             }
@@ -626,6 +629,14 @@ fun ExptrackedApp(
             currentLimit = state.budget.limit,
             onDismiss = { showLimitDialog = false },
             onConfirm = { actions.onSetLimit(it); showLimitDialog = false },
+        )
+    }
+
+    if (showNameDialog) {
+        EditNameDialog(
+            currentName = state.userName,
+            onDismiss = { showNameDialog = false },
+            onConfirm = { actions.onSetUserName(it); showNameDialog = false },
         )
     }
 }
@@ -1160,9 +1171,11 @@ fun AccountScreen(
     onEditLimit: () -> Unit,
     onOpenCoach: () -> Unit,
     onThemeModeChange: (ThemeMode) -> Unit = {},
+    onEditName: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val rows = listOf(
+        AccountRow("Edit Name", Icons.Outlined.Person, state.userName, onEditName),
         AccountRow("Linked Payment Apps", Icons.Outlined.Payments, "Google Pay, PhonePe, Paytm"),
         AccountRow("Savings Goals", Icons.Outlined.Savings, "${state.savingsGoalCount} active goals"),
         AccountRow("AI Money Coach", Icons.Outlined.AutoAwesome, "Ask about your spending", onOpenCoach),
@@ -1839,6 +1852,30 @@ fun EditLimitDialog(currentLimit: Double, onDismiss: () -> Unit, onConfirm: (Dou
         },
         confirmButton = {
             TextButton(onClick = { text.toDoubleOrNull()?.let(onConfirm) }, enabled = text.toDoubleOrNull() != null) { Text("Set") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+/* ---- Edit name ---- */
+
+@Composable
+fun EditNameDialog(currentName: String, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
+    var text by remember { mutableStateOf(currentName) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = ExpColors.SandLight,
+        title = { Text("Your name", fontFamily = ExpSerif) },
+        text = {
+            OutlinedTextField(
+                value = text,
+                onValueChange = { v -> if (v.length <= 40) text = v },
+                singleLine = true,
+                colors = fieldColors(),
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = { if (text.isNotBlank()) onConfirm(text.trim()) }, enabled = text.isNotBlank()) { Text("Save") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
