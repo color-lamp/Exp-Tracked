@@ -1,0 +1,3 @@
+# Exp-Tracked
+Exptracked: A lightweight, privacy-first QR scanner and UPI payment trigger that automatically logs and calculates your expenses without holding or managing your money.
+Exptracked is a secure, client-side Android application designed to bridge the gap between scanning QR codes, making UPI payments, and tracking personal expenses. Acting purely as an interface, Exptracked does not store, handle, or intermediate any funds; instead, it safely passes payment payloads to your preferred installed UPI apps (like GPay, PhonePe, or Paytm) via standard Android intents. As you complete transactions, the app automatically parses and records the data locally, turning quick scans into an organized, real-time expense ledger.
