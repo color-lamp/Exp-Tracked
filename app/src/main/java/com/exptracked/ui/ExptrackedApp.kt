@@ -262,6 +262,7 @@ fun ExptrackedApp(
                         onOpenCoach = { stack.add(Route.Coach) },
                         onThemeModeChange = actions.onSetThemeMode,
                         onEditName = { showNameDialog = true },
+                        onSetPreferredUpiApp = actions.onSetPreferredUpiApp,
                     )
                 }
             }

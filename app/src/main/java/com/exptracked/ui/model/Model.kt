@@ -165,6 +165,7 @@ data class DashboardUiState(
     val coachMessages: List<CoachMessage> = emptyList(),
     /** Set from your contact-picker result; the Add Expense screen opens prefilled, then onPayeeConsumed fires. */
     val pendingPayee: String = "",
+    val preferredUpiPackage: String? = null,
     val themeMode: ThemeMode = ThemeMode.DARK,
 ) {
     val categoryTotals: List<CategoryTotal>
@@ -187,6 +188,7 @@ data class ExptrackedActions(
     /** Persist the choice (DataStore) and feed it back via DashboardUiState.themeMode. */
     val onSetThemeMode: (ThemeMode) -> Unit = {},
     val onSetUserName: (String) -> Unit = {},
+    val onSetPreferredUpiApp: (String?) -> Unit = {},
 )
 
 /* ============================================================================================

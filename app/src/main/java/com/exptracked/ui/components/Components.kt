@@ -1,4 +1,3 @@
-@file:OptIn(androidx.camera.core.ExperimentalGetImage::class)
 @file:Suppress("UnsafeOptInUsageError")
 
 package com.exptracked.ui.components
@@ -76,6 +75,41 @@ fun TransactionRow(item: ExpenseItem, modifier: Modifier = Modifier) {
     }
 }
 
+@Composable
+fun PreferredUpiAppDialog(
+    currentPackage: String?,
+    onDismiss: () -> Unit,
+    onSelect: (String?) -> Unit,
+) {
+    val options = listOf(
+        null to "None (system chooser)",
+        "com.google.android.apps.nbu.paisa.user" to "Google Pay",
+        "com.phonepe.app" to "PhonePe",
+        "net.one97.paytm" to "Paytm",
+    )
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = ExpColors.SandLight,
+        title = { Text("Preferred UPI App", fontFamily = ExpSerif) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                options.forEach { (pkg, label) ->
+                    Row(
+                        Modifier.fillMaxWidth().clickable { onSelect(pkg) }.padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(selected = currentPackage == pkg, onClick = { onSelect(pkg) })
+                        Spacer(Modifier.width(8.dp))
+                        Text(label, color = ExpColors.Ink)
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
 @OptIn(androidx.camera.core.ExperimentalGetImage::class)
 @Composable
 fun CameraPreview(onResult: (String) -> Unit) {
@@ -112,7 +146,35 @@ fun CameraPreview(onResult: (String) -> Unit) {
     var scanned by remember { mutableStateOf(false) }
     val cameraProviderFuture = remember { androidx.camera.lifecycle.ProcessCameraProvider.getInstance(context) }
 
-    AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
+    val galleryLauncher = rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.GetContent()
+    ) { uri ->
+        uri?.let {
+            runCatching {
+                val inputImage = com.google.mlkit.vision.common.InputImage.fromFilePath(context, it)
+                com.google.mlkit.vision.barcode.BarcodeScanning.getClient(
+                    com.google.mlkit.vision.barcode.BarcodeScannerOptions.Builder()
+                        .setBarcodeFormats(com.google.mlkit.vision.barcode.common.Barcode.FORMAT_QR_CODE)
+                        .build()
+                ).process(inputImage).addOnSuccessListener { barcodes ->
+                    for (barcode in barcodes) {
+                        val raw = barcode.rawValue
+                        if (!raw.isNullOrBlank()) { onResult(raw); break }
+                    }
+                }
+            }
+        }
+    }
+
+    Box(Modifier.fillMaxSize()) {
+        AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
+        Button(
+            onClick = { galleryLauncher.launch("image/*") },
+            modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp),
+        ) {
+            Text("Import from gallery")
+        }
+    }
 
     DisposableEffect(lifecycleOwner, scanned) {
         val executor = androidx.core.content.ContextCompat.getMainExecutor(context)

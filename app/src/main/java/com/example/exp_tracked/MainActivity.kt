@@ -32,6 +32,7 @@ class MainActivity : ComponentActivity() {
                         onPayeeConsumed = vm::consumePayee,
                         onAskCoach = vm::askCoach,
                         onPay = { draft, app -> vm.launchUpiPayment(draft.vpa.ifBlank { draft.payee }, draft.payee, draft.amount, app, draft.tr) },
+                        onSetPreferredUpiApp = vm::setPreferredUpiApp,
                     ),
                 )
             }

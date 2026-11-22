@@ -41,6 +41,7 @@ class ExpenseTrackerViewModel(application: Application) : AndroidViewModel(appli
         val override = prefs.getBoolean("overrideEnabled", false)
         val themeName = prefs.getString("themeMode", ThemeMode.DARK.name) ?: ThemeMode.DARK.name
         val themeMode = runCatching { ThemeMode.valueOf(themeName) }.getOrDefault(ThemeMode.DARK)
+        val preferredUpiPackage = prefs.getString("preferredUpiPackage", null)
         val expenses = loadExpenses(prefs.getString("expenses", "[]") ?: "[]")
         val weekly = computeWeeklySpend(expenses)
         val budget = BudgetState(spent = spent, limit = limit, overrideEnabled = override)
@@ -56,6 +57,7 @@ class ExpenseTrackerViewModel(application: Application) : AndroidViewModel(appli
             savingsGoalCount = 0,
             coachMessages = emptyList(),
             pendingPayee = "",
+            preferredUpiPackage = preferredUpiPackage,
             themeMode = themeMode,
         )
     }
@@ -68,6 +70,7 @@ class ExpenseTrackerViewModel(application: Application) : AndroidViewModel(appli
             putFloat("budgetSpent", s.budget.spent.toFloat())
             putBoolean("overrideEnabled", s.budget.overrideEnabled)
             putString("themeMode", s.themeMode.name)
+            putString("preferredUpiPackage", s.preferredUpiPackage)
             putString("expenses", saveExpenses(s.expenses))
         }.apply()
     }
@@ -80,6 +83,11 @@ class ExpenseTrackerViewModel(application: Application) : AndroidViewModel(appli
     fun setUserName(name: String) {
         _state.update { it.copy(userName = name) }
         persist(_state.value)
+    }
+
+    fun setPreferredUpiApp(packageName: String?) {
+        _state.update { it.copy(preferredUpiPackage = packageName) }
+        prefs.edit().putString("preferredUpiPackage", packageName).apply()
     }
 
     fun setOverride(enabled: Boolean) {
@@ -128,7 +136,8 @@ class ExpenseTrackerViewModel(application: Application) : AndroidViewModel(appli
             return
         }
 
-        val pkg = upiApp.packageName
+        val preferred = _state.value.preferredUpiPackage
+        val pkg = preferred?.takeIf { isPackageInstalled(context, it) } ?: upiApp.packageName
         // Target the selected app specifically when a package is known.
         if (pkg != null) {
             try {
@@ -151,6 +160,15 @@ class ExpenseTrackerViewModel(application: Application) : AndroidViewModel(appli
             context.startActivity(generic)
         } catch (e: android.content.ActivityNotFoundException) {
             android.widget.Toast.makeText(context, "No UPI app available", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun isPackageInstalled(context: android.content.Context, packageName: String): Boolean {
+        return try {
+            context.packageManager.getPackageInfo(packageName, 0)
+            true
+        } catch (e: android.content.pm.PackageManager.NameNotFoundException) {
+            false
         }
     }
 

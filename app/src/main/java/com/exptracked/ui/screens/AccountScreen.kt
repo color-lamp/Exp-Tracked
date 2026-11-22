@@ -36,6 +36,7 @@ import com.exptracked.ui.theme.ExptrackedTheme
 import com.exptracked.ui.theme.LocalExpPalette
 import com.exptracked.ui.theme.ThemeMode
 import com.exptracked.ui.theme.expCardElevation
+import com.exptracked.ui.components.*
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
@@ -187,10 +188,13 @@ fun AccountScreen(
     onOpenCoach: () -> Unit,
     onThemeModeChange: (ThemeMode) -> Unit = {},
     onEditName: () -> Unit = {},
+    onSetPreferredUpiApp: (String?) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
+    var showPreferredDialog by rememberSaveable { mutableStateOf(false) }
     val rows = listOf(
         AccountRow("Edit Name", Icons.Outlined.Person, state.userName, onEditName),
+        AccountRow("Preferred UPI App", Icons.Outlined.Payments, state.preferredUpiPackage ?: "None (chooser)", { showPreferredDialog = true }),
         AccountRow("Linked Payment Apps", Icons.Outlined.Payments, "Google Pay, PhonePe, Paytm"),
         AccountRow("Savings Goals", Icons.Outlined.Savings, "${state.savingsGoalCount} active goals"),
         AccountRow("AI Money Coach", Icons.Outlined.AutoAwesome, "Ask about your spending", onOpenCoach),
@@ -244,6 +248,17 @@ fun AccountScreen(
                 }
             }
         }
+    }
+
+    if (showPreferredDialog) {
+        PreferredUpiAppDialog(
+            currentPackage = state.preferredUpiPackage,
+            onDismiss = { showPreferredDialog = false },
+            onSelect = { pkg ->
+                onSetPreferredUpiApp(pkg)
+                showPreferredDialog = false
+            },
+        )
     }
 }
 
