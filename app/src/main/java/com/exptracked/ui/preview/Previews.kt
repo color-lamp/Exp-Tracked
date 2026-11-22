@@ -307,7 +307,7 @@ private fun ScanPreview() = ExptrackedTheme { ScanQrScreen({}, {}, {}, {}) }
 
 @Preview(showBackground = true, heightDp = 800)
 @Composable
-private fun AddExpensePreview() = ExptrackedTheme { AddExpenseScreen("Sagar Mess", {}, {}) }
+private fun AddExpensePreview() = ExptrackedTheme { AddExpenseScreen(initialPayee = "Sagar Mess", onBack = {}, onNext = {}) }
 
 @Preview(showBackground = true, heightDp = 900)
 @Composable

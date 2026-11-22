@@ -1,3 +1,6 @@
+@file:OptIn(androidx.camera.core.ExperimentalGetImage::class)
+@file:Suppress("UnsafeOptInUsageError")
+
 package com.exptracked.ui.components
 
 import androidx.compose.foundation.Canvas
@@ -13,6 +16,9 @@ import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -25,6 +31,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.core.view.WindowCompat
 import kotlin.math.roundToInt
@@ -69,24 +76,101 @@ fun TransactionRow(item: ExpenseItem, modifier: Modifier = Modifier) {
     }
 }
 
+@OptIn(androidx.camera.core.ExperimentalGetImage::class)
 @Composable
-fun SimulatedScanner(onResult: (String) -> Unit) {
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(ExpColors.OliveDark)
-            .clickable { onResult("upi://pay?pa=sagarmess@okhdfc&pn=Sagar%20Mess") },
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(Icons.Outlined.QrCodeScanner, null, tint = ExpColors.OnOlive.copy(alpha = 0.3f), modifier = Modifier.size(96.dp))
-            Spacer(Modifier.height(12.dp))
-            Text(
-                "Camera preview goes here\n(tap to simulate a scan)",
-                color = ExpColors.OnOlive.copy(alpha = 0.6f),
-                fontSize = 12.sp,
-                textAlign = TextAlign.Center,
+fun CameraPreview(onResult: (String) -> Unit) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var hasPermission by remember {
+        mutableStateOf(
+            androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.CAMERA) ==
+                android.content.pm.PackageManager.PERMISSION_GRANTED
+        )
+    }
+    val permissionLauncher = rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { granted -> hasPermission = granted }
+
+    LaunchedEffect(Unit) {
+        if (!hasPermission) permissionLauncher.launch(android.Manifest.permission.CAMERA)
+    }
+
+    if (!hasPermission) {
+        Box(Modifier.fillMaxSize().background(ExpColors.OliveDark), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("Camera permission required", color = ExpColors.OnOlive, fontSize = 14.sp)
+                Spacer(Modifier.height(8.dp))
+                Button(onClick = { permissionLauncher.launch(android.Manifest.permission.CAMERA) }) {
+                    Text("Grant")
+                }
+            }
+        }
+        return
+    }
+
+    val previewView = remember { androidx.camera.view.PreviewView(context) }
+    var scanned by remember { mutableStateOf(false) }
+    val cameraProviderFuture = remember { androidx.camera.lifecycle.ProcessCameraProvider.getInstance(context) }
+
+    AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
+
+    DisposableEffect(lifecycleOwner, scanned) {
+        val executor = androidx.core.content.ContextCompat.getMainExecutor(context)
+        cameraProviderFuture.addListener({
+            val cameraProvider = cameraProviderFuture.get()
+            val preview = androidx.camera.core.Preview.Builder().build().also {
+                it.setSurfaceProvider(previewView.surfaceProvider)
+            }
+            val analysis = androidx.camera.core.ImageAnalysis.Builder()
+                .setBackpressureStrategy(androidx.camera.core.ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                .build()
+            val scanner = com.google.mlkit.vision.barcode.BarcodeScanning.getClient(
+                com.google.mlkit.vision.barcode.BarcodeScannerOptions.Builder()
+                    .setBarcodeFormats(com.google.mlkit.vision.barcode.common.Barcode.FORMAT_QR_CODE)
+                    .build()
             )
+            analysis.setAnalyzer(executor, object : androidx.camera.core.ImageAnalysis.Analyzer {
+                @OptIn(androidx.camera.core.ExperimentalGetImage::class)
+                override fun analyze(imageProxy: androidx.camera.core.ImageProxy) {
+                    if (scanned) {
+                        imageProxy.close()
+                        return
+                    }
+                    val mediaImage = imageProxy.image
+                    if (mediaImage != null) {
+                        val inputImage = com.google.mlkit.vision.common.InputImage.fromMediaImage(
+                            mediaImage,
+                            imageProxy.imageInfo.rotationDegrees
+                        )
+                        scanner.process(inputImage)
+                            .addOnSuccessListener { barcodes ->
+                                for (barcode in barcodes) {
+                                    val raw = barcode.rawValue
+                                    if (!raw.isNullOrBlank() && !scanned) {
+                                        scanned = true
+                                        analysis.clearAnalyzer()
+                                        onResult(raw)
+                                        break
+                                    }
+                                }
+                            }
+                            .addOnCompleteListener { imageProxy.close() }
+                    } else {
+                        imageProxy.close()
+                    }
+                }
+            })
+            val selector = androidx.camera.core.CameraSelector.DEFAULT_BACK_CAMERA
+            try {
+                cameraProvider.unbindAll()
+                cameraProvider.bindToLifecycle(lifecycleOwner, selector, preview, analysis)
+            } catch (e: Exception) {
+                // ignore binding errors
+            }
+        }, executor)
+
+        onDispose {
+            runCatching { cameraProviderFuture.get().unbindAll() }
         }
     }
 }

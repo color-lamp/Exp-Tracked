@@ -68,6 +68,8 @@ data class ExpenseDraft(
     val category: ExpenseCategory,
     val payee: String,
     val note: String = "",
+    val vpa: String = "",
+    val tr: String = "",
     val dateTime: LocalDateTime = LocalDateTime.now(),
 )
 
@@ -99,8 +101,11 @@ data class DailyOffer(
     }
 }
 
-enum class UpiApp(val label: String) {
-    GPAY("Google Pay"), PHONEPE("PhonePe"), PAYTM("Paytm"), OTHER("Other UPI App")
+enum class UpiApp(val label: String, val packageName: String? = null) {
+    GPAY("Google Pay", "com.google.android.apps.nbu.paisa.user"),
+    PHONEPE("PhonePe", "com.phonepe.app"),
+    PAYTM("Paytm", "net.one97.paytm"),
+    OTHER("Other UPI App", null),
 }
 
 data class CoachMessage(val text: String, val fromUser: Boolean)
@@ -223,8 +228,30 @@ fun greetingFor(hour: Int): String = when (hour) {
 /** Pulls the payee name out of a upi://pay?pa=...&pn=... QR payload; falls back to the raw text. */
 fun parsePayee(raw: String): String = runCatching {
     val uri = Uri.parse(raw)
+    if (uri.scheme != "upi" || uri.host != "pay") return@runCatching raw
     uri.getQueryParameter("pn")?.takeIf { it.isNotBlank() } ?: uri.getQueryParameter("pa") ?: raw
 }.getOrDefault(raw)
+
+/** Pulls the payment address (VPA) out of a upi://pay?pa=... QR payload. */
+fun parsePayeeVpa(raw: String): String = runCatching {
+    val uri = Uri.parse(raw)
+    if (uri.scheme != "upi" || uri.host != "pay") return@runCatching ""
+    uri.getQueryParameter("pa")?.takeIf { it.isNotBlank() } ?: ""
+}.getOrDefault("")
+
+/** Extracts the amount (am) from a upi://pay?... QR payload. */
+fun parseAmount(raw: String): String = runCatching {
+    val uri = Uri.parse(raw)
+    if (uri.scheme != "upi" || uri.host != "pay") return@runCatching ""
+    uri.getQueryParameter("am")?.takeIf { it.isNotBlank() } ?: ""
+}.getOrDefault("")
+
+/** Extracts the transaction reference (tr) from a upi://pay?... QR payload. */
+fun parseTr(raw: String): String = runCatching {
+    val uri = Uri.parse(raw)
+    if (uri.scheme != "upi" || uri.host != "pay") return@runCatching ""
+    uri.getQueryParameter("tr")?.takeIf { it.isNotBlank() } ?: ""
+}.getOrDefault("")
 
 /** Gold that reads on the hero surfaces (teal in Light, charcoal in Dark). */
 internal val HeroGold = Color(0xFFF0D77A)

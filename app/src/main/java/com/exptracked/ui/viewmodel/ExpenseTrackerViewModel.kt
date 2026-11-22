@@ -1,6 +1,8 @@
 package com.exptracked.ui.viewmodel
 
 import android.app.Application
+import android.content.Intent
+import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.exptracked.ui.model.BudgetState
@@ -12,6 +14,7 @@ import com.exptracked.ui.model.ExpenseDraft
 import com.exptracked.ui.model.ExpenseGate
 import com.exptracked.ui.model.ExpenseItem
 import com.exptracked.ui.theme.ThemeMode
+import com.exptracked.ui.model.UpiApp
 import com.exptracked.ui.model.asInr
 import com.exptracked.ui.model.evaluate
 import com.exptracked.ui.model.greetingFor
@@ -107,6 +110,86 @@ class ExpenseTrackerViewModel(application: Application) : AndroidViewModel(appli
         }
     }
 
+    /**
+     * Redirects to a UPI app to pay [amount] to [payee] ([payeeName]).
+     * Builds a upi://pay?pa=...&pn=...&am=...&cu=INR URI and fires ACTION_VIEW.
+     * No state mutation, no persistence, no result parsing.
+     */
+    fun launchUpiPayment(payee: String, payeeName: String, amount: Double, upiApp: UpiApp, tr: String = "") {
+        val context = getApplication<Application>()
+        val uri = Uri.parse(buildUpiUri(payee, payeeName, amount, tr))
+
+        // Query PackageManager for apps that can handle upi://pay URIs.
+        val upiIntent = Intent(Intent.ACTION_VIEW, uri)
+        val resolveInfos = context.packageManager.queryIntentActivities(upiIntent, 0)
+
+        if (resolveInfos.isNullOrEmpty()) {
+            android.widget.Toast.makeText(context, "No UPI app available", android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val pkg = upiApp.packageName
+        // Target the selected app specifically when a package is known.
+        if (pkg != null) {
+            try {
+                val targeted = Intent(Intent.ACTION_VIEW, uri).apply {
+                    setPackage(pkg)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(targeted)
+                return
+            } catch (e: android.content.ActivityNotFoundException) {
+                // Selected app not installed — fall through to generic chooser.
+            }
+        }
+
+        // Fallback: generic upi:// intent (Android shows chooser / opens directly).
+        try {
+            val generic = Intent(Intent.ACTION_VIEW, uri).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(generic)
+        } catch (e: android.content.ActivityNotFoundException) {
+            android.widget.Toast.makeText(context, "No UPI app available", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    companion object {
+        private const val PREFS = "exp_tracked_prefs"
+
+        fun buildUpiUri(payee: String, payeeName: String, amount: Double, tr: String = ""): String {
+            val base = "upi://pay?pa=${uriEncode(payee)}&pn=${uriEncode(payeeName)}&am=$amount&cu=INR"
+            return if (tr.isNotBlank()) "$base&tr=${uriEncode(tr)}" else base
+        }
+
+        private fun uriEncode(s: String): String {
+            val sb = StringBuilder()
+            for (ch in s) {
+                if (isUnreserved(ch)) {
+                    sb.append(ch)
+                } else {
+                    val bytes = ch.toString().toByteArray(Charsets.UTF_8)
+                    for (b in bytes) {
+                        sb.append('%')
+                        sb.append(HEX_DIGITS[(b.toInt() and 0xf0) shr 4])
+                        sb.append(HEX_DIGITS[b.toInt() and 0x0f])
+                    }
+                }
+            }
+            return sb.toString()
+        }
+
+        private fun isUnreserved(c: Char): Boolean =
+            (c in 'A'..'Z') || (c in 'a'..'z') || (c in '0'..'9') ||
+                c == '-' || c == '_' || c == '.' || c == '~' ||
+                c == '!' || c == '\'' || c == '(' || c == ')' || c == '*'
+
+        private val HEX_DIGITS = charArrayOf(
+            '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
+            'A', 'B', 'C', 'D', 'E', 'F',
+        )
+    }
+
     fun saveExpense(draft: ExpenseDraft) {
         val current = _state.value
         if (current.budget.evaluate(draft.amount) is ExpenseGate.Blocked) return
@@ -184,9 +267,5 @@ class ExpenseTrackerViewModel(application: Application) : AndroidViewModel(appli
         } else {
             (70 - (fraction - 1.0) * 40).toInt().coerceIn(0, 70)
         }
-    }
-
-    companion object {
-        private const val PREFS = "exp_tracked_prefs"
     }
 }

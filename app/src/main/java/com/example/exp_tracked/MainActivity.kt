@@ -31,6 +31,7 @@ class MainActivity : ComponentActivity() {
                         onPickContact = vm::pickContact,
                         onPayeeConsumed = vm::consumePayee,
                         onAskCoach = vm::askCoach,
+                        onPay = { draft, app -> vm.launchUpiPayment(draft.vpa.ifBlank { draft.payee }, draft.payee, draft.amount, app, draft.tr) },
                     ),
                 )
             }

@@ -12,7 +12,7 @@ import com.exptracked.ui.screens.PaymentSuccessScreen
 import com.exptracked.ui.screens.CoachScreen
 import com.exptracked.ui.components.EditLimitDialog
 import com.exptracked.ui.components.EditNameDialog
-import com.exptracked.ui.components.SimulatedScanner
+import com.exptracked.ui.components.CameraPreview
 import com.exptracked.ui.model.StatusBarIcons
 import com.exptracked.ui.components.*
 
@@ -29,11 +29,13 @@ import com.exptracked.ui.model.ExpenseDraft
 import com.exptracked.ui.model.ExpenseGate
 import com.exptracked.ui.model.ExpenseItem
 import com.exptracked.ui.model.OfferType
-import com.exptracked.ui.model.UpiApp
 import com.exptracked.ui.model.evaluate
 import com.exptracked.ui.model.asInr
 import com.exptracked.ui.model.greetingFor
+import com.exptracked.ui.model.parseAmount
 import com.exptracked.ui.model.parsePayee
+import com.exptracked.ui.model.parsePayeeVpa
+import com.exptracked.ui.model.parseTr
 import com.exptracked.ui.model.dayHeader
 import com.exptracked.ui.model.asSignedInr
 import com.exptracked.ui.model.HeroGold
@@ -200,9 +202,8 @@ private enum class AppTab(val label: String, val icon: ImageVector) {
 
 private sealed interface Route {
     data object Scan : Route
-    data class Add(val payee: String = "") : Route
+    data class Add(val payee: String = "", val vpa: String = "", val amount: String = "", val tr: String = "") : Route
     data class Review(val draft: ExpenseDraft) : Route
-    data class Success(val draft: ExpenseDraft, val paidWith: UpiApp, val reference: String) : Route
     data object Coach : Route
 }
 
@@ -211,7 +212,7 @@ fun ExptrackedApp(
     state: DashboardUiState,
     actions: ExptrackedActions = ExptrackedActions(),
     /** Plug CameraX / ML Kit here and call onResult with the decoded QR text. */
-    scanner: @Composable (onResult: (String) -> Unit) -> Unit = { SimulatedScanner(it) },
+    scanner: @Composable (onResult: (String) -> Unit) -> Unit = { CameraPreview(it) },
 ) {
     var tab by rememberSaveable { mutableStateOf(AppTab.HOME) }
     var showLimitDialog by rememberSaveable { mutableStateOf(false) }
@@ -228,7 +229,7 @@ fun ExptrackedApp(
     }
 
     BackHandler(enabled = stack.isNotEmpty()) {
-        if (stack.lastOrNull() is Route.Success) stack.clear() else stack.removeAt(stack.lastIndex)
+        stack.removeAt(stack.lastIndex)
     }
 
     when (val route = stack.lastOrNull()) {
@@ -268,7 +269,7 @@ fun ExptrackedApp(
 
         Route.Scan -> ScanQrScreen(
             onBack = { stack.removeAt(stack.lastIndex) },
-            onScanned = { raw -> stack.add(Route.Add(parsePayee(raw))) },
+            onScanned = { raw -> stack.add(Route.Add(parsePayee(raw), parsePayeeVpa(raw), parseAmount(raw), parseTr(raw))) },
             onEnterManually = { stack.add(Route.Add()) },
             onPickContact = actions.onPickContact,
             scanner = scanner,
@@ -276,6 +277,9 @@ fun ExptrackedApp(
 
         is Route.Add -> AddExpenseScreen(
             initialPayee = route.payee,
+            initialVpa = route.vpa,
+            initialAmount = route.amount,
+            initialTr = route.tr,
             onBack = { stack.removeAt(stack.lastIndex) },
             onNext = { draft -> stack.add(Route.Review(draft)) },
         )
@@ -289,22 +293,11 @@ fun ExptrackedApp(
             onProceed = { payable, app ->
                 val paid = route.draft.copy(amount = payable)
                 actions.onPay(paid, app)
-                actions.onSaveExpense(paid)
-                // Placeholder reference. Replace with the UPI transaction ref from the intent result.
-                val ref = System.currentTimeMillis().toString().takeLast(12).padStart(12, '0')
-                stack.add(Route.Success(paid, app, ref))
             },
             onLogOnly = { payable ->
                 actions.onSaveExpense(route.draft.copy(amount = payable))
                 stack.clear()
             },
-        )
-
-        is Route.Success -> PaymentSuccessScreen(
-            draft = route.draft,
-            paidWith = route.paidWith,
-            reference = route.reference,
-            onDone = { stack.clear() },
         )
 
         Route.Coach -> CoachScreen(

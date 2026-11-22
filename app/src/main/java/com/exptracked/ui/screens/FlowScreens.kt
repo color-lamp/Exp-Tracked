@@ -5,6 +5,7 @@ package com.exptracked.ui.screens
 import com.exptracked.ui.model.*
 import com.exptracked.ui.theme.*
 import com.exptracked.ui.components.*
+import com.exptracked.ui.components.CameraPreview
 
 import android.app.Activity
 import android.content.Context
@@ -193,7 +194,7 @@ fun ScanQrScreen(
     onEnterManually: () -> Unit,
     onPickContact: () -> Unit,
     modifier: Modifier = Modifier,
-    scanner: @Composable (onResult: (String) -> Unit) -> Unit = { SimulatedScanner(it) },
+    scanner: @Composable (onResult: (String) -> Unit) -> Unit = { CameraPreview(it) },
 ) {
     RouteScaffold(modifier) {
         ScreenTopBar("Scan QR", onBack)
@@ -267,13 +268,18 @@ private fun ScanFrameOverlay(modifier: Modifier = Modifier) {
 @Composable
 fun AddExpenseScreen(
     initialPayee: String,
+    initialVpa: String = "",
+    initialAmount: String = "",
+    initialTr: String = "",
     onBack: () -> Unit,
     onNext: (ExpenseDraft) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var amountText by rememberSaveable { mutableStateOf("") }
+    var amountText by rememberSaveable { mutableStateOf(initialAmount) }
     var category by rememberSaveable { mutableStateOf(ExpenseCategory.FOOD) }
     var payee by rememberSaveable { mutableStateOf(initialPayee) }
+    var vpa by rememberSaveable { mutableStateOf(initialVpa) }
+    var tr by rememberSaveable { mutableStateOf(initialTr) }
     var note by rememberSaveable { mutableStateOf("") }
     val amount = amountText.toDoubleOrNull()
     val canNext = amount != null && amount > 0 && payee.isNotBlank()
@@ -320,6 +326,15 @@ fun AddExpenseScreen(
                 colors = fieldColors(),
             )
             OutlinedTextField(
+                value = vpa,
+                onValueChange = { vpa = it },
+                label = { Text("UPI ID (e.g. name@upi)") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = fieldColors(),
+            )
+            OutlinedTextField(
                 value = note,
                 onValueChange = { note = it },
                 label = { Text("Add Note (Optional)") },
@@ -331,7 +346,7 @@ fun AddExpenseScreen(
         }
         PrimaryButton(
             "Next",
-            onClick = { onNext(ExpenseDraft(amount ?: 0.0, category, payee.trim(), note.trim())) },
+            onClick = { onNext(ExpenseDraft(amount ?: 0.0, category, payee.trim(), note.trim(), vpa.trim(), tr.trim())) },
             enabled = canNext,
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
         )
