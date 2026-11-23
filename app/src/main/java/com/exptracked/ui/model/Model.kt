@@ -3,7 +3,7 @@ package com.exptracked.ui.model
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
-import android.net.Uri
+import java.net.URLDecoder
 import androidx.compose.foundation.Canvas
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
@@ -169,10 +169,6 @@ data class DashboardUiState(
     /** Set from your contact-picker result; the Add Expense screen opens prefilled, then onPayeeConsumed fires. */
     val pendingPayee: String = "",
     val preferredUpiPackage: String? = null,
-    /** Expense draft awaiting confirmation after returning from a UPI app. */
-    val pendingExpense: ExpenseDraft? = null,
-    /** Whether to show the post-payment confirmation dialog. */
-    val showPaymentConfirm: Boolean = false,
     val themeMode: ThemeMode = ThemeMode.DARK,
 ) {
     val categoryTotals: List<CategoryTotal>
@@ -196,10 +192,6 @@ data class ExptrackedActions(
     val onSetThemeMode: (ThemeMode) -> Unit = {},
     val onSetUserName: (String) -> Unit = {},
     val onSetPreferredUpiApp: (String?) -> Unit = {},
-    val onSetPendingExpense: (ExpenseDraft) -> Unit = {},
-    val onConfirmPendingExpense: () -> Unit = {},
-    val onDiscardPendingExpense: () -> Unit = {},
-    val onAppResumed: () -> Unit = {},
     val onConfirmPending: () -> Unit = {},
     val onDiscardPending: () -> Unit = {},
 )
@@ -240,40 +232,72 @@ fun greetingFor(hour: Int): String = when (hour) {
     else -> "Good Night"
 }
 
+private fun isUpiPayUri(raw: String): Boolean {
+    val trimmed = raw.trim()
+    val prefix = "upi://pay"
+    if (!trimmed.startsWith(prefix, ignoreCase = true)) return false
+    val next = trimmed.substring(prefix.length).firstOrNull()
+    return next == null || next == '?' || next == '/' || next == '#'
+}
+
+private fun queryParam(raw: String, name: String): String? {
+    val queryStart = raw.indexOf('?')
+    if (queryStart < 0) return null
+    val query = raw.substring(queryStart + 1)
+    // strip fragment
+    val frag = query.indexOf('#')
+    val q = if (frag >= 0) query.substring(0, frag) else query
+    for (pair in q.split('&')) {
+        if (pair.isEmpty()) continue
+        val idx = pair.indexOf('=')
+        val key: String
+        val value: String
+        if (idx < 0) {
+            key = urlDecode(pair)
+            value = ""
+        } else {
+            key = urlDecode(pair.substring(0, idx))
+            value = urlDecode(pair.substring(idx + 1))
+        }
+        if (key == name) return value
+    }
+    return null
+}
+
+private fun urlDecode(s: String): String = runCatching {
+    URLDecoder.decode(s.replace('+', ' '), "UTF-8")
+}.getOrDefault(s.replace('+', ' '))
+
 /** Pulls the payee name out of a upi://pay?pa=...&pn=... QR payload; falls back to the raw text. */
-fun parsePayee(raw: String): String = runCatching {
-    val uri = Uri.parse(raw)
-    if (uri.scheme != "upi" || uri.host != "pay") return@runCatching raw
-    uri.getQueryParameter("pn")?.takeIf { it.isNotBlank() } ?: uri.getQueryParameter("pa") ?: raw
-}.getOrDefault(raw)
+fun parsePayee(raw: String): String {
+    if (!isUpiPayUri(raw)) return raw
+    val pn = queryParam(raw, "pn")?.takeIf { it.isNotBlank() }
+    return pn ?: queryParam(raw, "pa")?.takeIf { it.isNotBlank() } ?: raw
+}
 
 /** Pulls the payment address (VPA) out of a upi://pay?pa=... QR payload. */
-fun parsePayeeVpa(raw: String): String = runCatching {
-    val uri = Uri.parse(raw)
-    if (uri.scheme != "upi" || uri.host != "pay") return@runCatching ""
-    uri.getQueryParameter("pa")?.takeIf { it.isNotBlank() } ?: ""
-}.getOrDefault("")
+fun parsePayeeVpa(raw: String): String {
+    if (!isUpiPayUri(raw)) return ""
+    return queryParam(raw, "pa")?.takeIf { it.isNotBlank() } ?: ""
+}
 
 /** Extracts the amount (am) from a upi://pay?... QR payload. */
-fun parseAmount(raw: String): String = runCatching {
-    val uri = Uri.parse(raw)
-    if (uri.scheme != "upi" || uri.host != "pay") return@runCatching ""
-    uri.getQueryParameter("am")?.takeIf { it.isNotBlank() } ?: ""
-}.getOrDefault("")
+fun parseAmount(raw: String): String {
+    if (!isUpiPayUri(raw)) return ""
+    return queryParam(raw, "am")?.takeIf { it.isNotBlank() } ?: ""
+}
 
 /** Extracts the transaction reference (tr) from a upi://pay?... QR payload. */
-fun parseTr(raw: String): String = runCatching {
-    val uri = Uri.parse(raw)
-    if (uri.scheme != "upi" || uri.host != "pay") return@runCatching ""
-    uri.getQueryParameter("tr")?.takeIf { it.isNotBlank() } ?: ""
-}.getOrDefault("")
+fun parseTr(raw: String): String {
+    if (!isUpiPayUri(raw)) return ""
+    return queryParam(raw, "tr")?.takeIf { it.isNotBlank() } ?: ""
+}
 
 /** Extracts the merchant category code (mc) from a upi://pay?... QR payload. */
-fun parseMc(raw: String): String = runCatching {
-    val uri = Uri.parse(raw)
-    if (uri.scheme != "upi" || uri.host != "pay") return@runCatching ""
-    uri.getQueryParameter("mc")?.takeIf { it.isNotBlank() } ?: ""
-}.getOrDefault("")
+fun parseMc(raw: String): String {
+    if (!isUpiPayUri(raw)) return ""
+    return queryParam(raw, "mc")?.takeIf { it.isNotBlank() } ?: ""
+}
 
 /** Gold that reads on the hero surfaces (teal in Light, charcoal in Dark). */
 internal val HeroGold = Color(0xFFF0D77A)

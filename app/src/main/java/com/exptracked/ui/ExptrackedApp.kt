@@ -237,7 +237,6 @@ fun ExptrackedApp(
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                actions.onAppResumed()
                 if (currentState.expenses.any { it.pendingConfirmation }) {
                     showPendingConfirmation = true
                 }
@@ -326,24 +325,6 @@ fun ExptrackedApp(
             currentName = state.userName,
             onDismiss = { showNameDialog = false },
             onConfirm = { v -> actions.onSetUserName(v); showNameDialog = false },
-        )
-    }
-
-    if (state.showPaymentConfirm && state.pendingExpense != null) {
-        val pending = state.pendingExpense
-        AlertDialog(
-            onDismissRequest = { actions.onDiscardPendingExpense() },
-            title = { Text("Payment completed?", fontFamily = ExpSerif) },
-            text = { Text("Did you complete the payment of ${pending.amount.asInr()} to ${pending.payee}?") },
-            confirmButton = {
-                TextButton(onClick = {
-                    actions.onConfirmPendingExpense()
-                    stack.clear()
-                }) { Text("Yes, paid") }
-            },
-            dismissButton = {
-                TextButton(onClick = { actions.onDiscardPendingExpense() }) { Text("No, cancel") }
-            },
         )
     }
 

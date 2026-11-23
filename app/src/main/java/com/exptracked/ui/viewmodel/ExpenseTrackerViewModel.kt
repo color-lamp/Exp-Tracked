@@ -90,30 +90,6 @@ class ExpenseTrackerViewModel(application: Application) : AndroidViewModel(appli
         prefs.edit().putString("preferredUpiPackage", packageName).apply()
     }
 
-    private var upiLaunched: Boolean = false
-
-    fun setPendingExpense(draft: ExpenseDraft) {
-        _state.update { it.copy(pendingExpense = draft, showPaymentConfirm = false) }
-    }
-
-    fun onAppResumed() {
-        if (upiLaunched && _state.value.pendingExpense != null) {
-            _state.update { it.copy(showPaymentConfirm = true) }
-            upiLaunched = false
-        }
-    }
-
-    fun confirmPendingExpense() {
-        _state.value.pendingExpense?.let { saveExpense(it) }
-        _state.update { it.copy(pendingExpense = null, showPaymentConfirm = false) }
-        upiLaunched = false
-    }
-
-    fun discardPendingExpense() {
-        _state.update { it.copy(pendingExpense = null, showPaymentConfirm = false) }
-        upiLaunched = false
-    }
-
     fun setOverride(enabled: Boolean) {
         _state.update { it.copy(budget = it.budget.copy(overrideEnabled = enabled)) }
         persist(_state.value)
@@ -207,33 +183,68 @@ class ExpenseTrackerViewModel(application: Application) : AndroidViewModel(appli
 
     companion object {
         private const val PREFS = "exp_tracked_prefs"
-    }
 
-    fun confirmPendingExpenses() {
-        val updated = _state.value.expenses.map { it.copy(pendingConfirmation = false) }
-        _state.update { it.copy(expenses = updated) }
-        persist(_state.value)
-    }
+        fun computeWeeklySpend(expenses: List<ExpenseItem>): List<DailySpend> {
+            val dayLabels = listOf("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
+            val totals = DoubleArray(7)
+            expenses.forEach { e ->
+                val idx = e.dateTime.dayOfWeek.value % 7
+                totals[idx] += e.amount
+            }
+            return dayLabels.mapIndexed { i, label -> DailySpend(label, totals[i]) }
+        }
 
-    fun discardPendingExpenses() {
-        val current = _state.value
-        val pending = current.expenses.filter { it.pendingConfirmation }
-        val discardedAmount = pending.sumOf { it.amount }
-        val newExpenses = current.expenses.filterNot { it.pendingConfirmation }
-        val newBudget = current.budget.copy(spent = (current.budget.spent - discardedAmount).coerceAtLeast(0.0))
-        _state.update {
-            it.copy(
+        fun computeHealth(budget: BudgetState): Int {
+            if (budget.limit <= 0.0) return 0
+            val fraction = (budget.spent / budget.limit).coerceIn(0.0, 2.0)
+            return if (fraction <= 1.0) {
+                (100 - fraction * 30).toInt().coerceIn(70, 100)
+            } else {
+                (70 - (fraction - 1.0) * 40).toInt().coerceIn(0, 70)
+            }
+        }
+
+        fun applyLogPending(state: DashboardUiState, item: ExpenseItem): DashboardUiState {
+            val newExpenses = listOf(item) + state.expenses
+            val newBudget = state.budget.copy(spent = state.budget.spent + item.amount)
+            return state.copy(
                 expenses = newExpenses,
                 budget = newBudget,
                 weeklySpend = computeWeeklySpend(newExpenses),
                 healthScore = computeHealth(newBudget),
             )
         }
+
+        fun applyConfirmPending(state: DashboardUiState): DashboardUiState {
+            val updated = state.expenses.map { it.copy(pendingConfirmation = false) }
+            return state.copy(expenses = updated)
+        }
+
+        fun applyDiscardPending(state: DashboardUiState): DashboardUiState {
+            val pending = state.expenses.filter { it.pendingConfirmation }
+            val discardedAmount = pending.sumOf { it.amount }
+            val newExpenses = state.expenses.filterNot { it.pendingConfirmation }
+            val newBudget = state.budget.copy(spent = (state.budget.spent - discardedAmount).coerceAtLeast(0.0))
+            return state.copy(
+                expenses = newExpenses,
+                budget = newBudget,
+                weeklySpend = computeWeeklySpend(newExpenses),
+                healthScore = computeHealth(newBudget),
+            )
+        }
+    }
+
+    fun confirmPendingExpenses() {
+        _state.update { applyConfirmPending(it) }
+        persist(_state.value)
+    }
+
+    fun discardPendingExpenses() {
+        _state.update { applyDiscardPending(it) }
         persist(_state.value)
     }
 
     fun logPendingExpense(draft: ExpenseDraft) {
-        val current = _state.value
         val item = ExpenseItem(
             System.nanoTime(),
             draft.payee,
@@ -242,16 +253,7 @@ class ExpenseTrackerViewModel(application: Application) : AndroidViewModel(appli
             draft.dateTime,
             pendingConfirmation = true,
         )
-        val newExpenses = listOf(item) + current.expenses
-        val newBudget = current.budget.copy(spent = current.budget.spent + draft.amount)
-        _state.update {
-            it.copy(
-                expenses = newExpenses,
-                budget = newBudget,
-                weeklySpend = computeWeeklySpend(newExpenses),
-                healthScore = computeHealth(newBudget),
-            )
-        }
+        _state.update { applyLogPending(it, item) }
         persist(_state.value)
     }
 
@@ -316,23 +318,4 @@ class ExpenseTrackerViewModel(application: Application) : AndroidViewModel(appli
         return arr.toString()
     }
 
-    private fun computeWeeklySpend(expenses: List<ExpenseItem>): List<DailySpend> {
-        val dayLabels = listOf("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
-        val totals = DoubleArray(7)
-        expenses.forEach { e ->
-            val idx = e.dateTime.dayOfWeek.value % 7
-            totals[idx] += e.amount
-        }
-        return dayLabels.mapIndexed { i, label -> DailySpend(label, totals[i]) }
-    }
-
-    private fun computeHealth(budget: BudgetState): Int {
-        if (budget.limit <= 0.0) return 0
-        val fraction = (budget.spent / budget.limit).coerceIn(0.0, 2.0)
-        return if (fraction <= 1.0) {
-            (100 - fraction * 30).toInt().coerceIn(70, 100)
-        } else {
-            (70 - (fraction - 1.0) * 40).toInt().coerceIn(0, 70)
-        }
-    }
 }
