@@ -7,8 +7,7 @@ import com.exptracked.ui.screens.OffersScreen
 import com.exptracked.ui.screens.AccountScreen
 import com.exptracked.ui.screens.ScanQrScreen
 import com.exptracked.ui.screens.AddExpenseScreen
-import com.exptracked.ui.screens.ReviewPayScreen
-import com.exptracked.ui.screens.PaymentSuccessScreen
+import com.exptracked.ui.screens.QuickEntryScreen
 import com.exptracked.ui.screens.CoachScreen
 import com.exptracked.ui.components.EditLimitDialog
 import com.exptracked.ui.components.EditNameDialog
@@ -32,10 +31,8 @@ import com.exptracked.ui.model.OfferType
 import com.exptracked.ui.model.evaluate
 import com.exptracked.ui.model.asInr
 import com.exptracked.ui.model.greetingFor
-import com.exptracked.ui.model.parseAmount
 import com.exptracked.ui.model.parsePayee
 import com.exptracked.ui.model.parsePayeeVpa
-import com.exptracked.ui.model.parseTr
 import com.exptracked.ui.model.dayHeader
 import com.exptracked.ui.model.asSignedInr
 import com.exptracked.ui.model.HeroGold
@@ -55,6 +52,9 @@ import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import android.net.Uri
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
@@ -122,6 +122,8 @@ import androidx.compose.material.icons.outlined.ShoppingBag
 import androidx.compose.material.icons.outlined.SportsEsports
 import androidx.compose.material.icons.outlined.Warning
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -150,11 +152,13 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -202,8 +206,7 @@ private enum class AppTab(val label: String, val icon: ImageVector) {
 
 private sealed interface Route {
     data object Scan : Route
-    data class Add(val payee: String = "", val vpa: String = "", val amount: String = "", val tr: String = "") : Route
-    data class Review(val draft: ExpenseDraft) : Route
+    data class QuickEntry(val payee: String = "", val vpa: String = "") : Route
     data object Coach : Route
 }
 
@@ -223,9 +226,25 @@ fun ExptrackedApp(
 
     LaunchedEffect(state.pendingPayee) {
         if (state.pendingPayee.isNotBlank()) {
-            stack.add(Route.Add(state.pendingPayee))
+            stack.add(Route.QuickEntry(state.pendingPayee))
             actions.onPayeeConsumed()
         }
+    }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val currentState by rememberUpdatedState(state)
+    var showPendingConfirmation by remember { mutableStateOf(false) }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                actions.onAppResumed()
+                if (currentState.expenses.any { it.pendingConfirmation }) {
+                    showPendingConfirmation = true
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     BackHandler(enabled = stack.isNotEmpty()) {
@@ -236,7 +255,7 @@ fun ExptrackedApp(
         null -> Scaffold(
             containerColor = ExpColors.Cream,
             bottomBar = {
-                ExpBottomBar(selected = tab, onSelect = { tab = it }, onScan = { stack.add(Route.Scan) })
+                ExpBottomBar(selected = tab, onSelect = { tab = it }, onScan = { stack.add(Route.QuickEntry()) })
             },
         ) { padding ->
             Box(Modifier.fillMaxSize().padding(padding)) {
@@ -270,35 +289,21 @@ fun ExptrackedApp(
 
         Route.Scan -> ScanQrScreen(
             onBack = { stack.removeAt(stack.lastIndex) },
-            onScanned = { raw -> stack.add(Route.Add(parsePayee(raw), parsePayeeVpa(raw), parseAmount(raw), parseTr(raw))) },
-            onEnterManually = { stack.add(Route.Add()) },
+            onScanned = { raw -> stack.add(Route.QuickEntry(parsePayee(raw), parsePayeeVpa(raw))) },
+            onEnterManually = { stack.add(Route.QuickEntry()) },
             onPickContact = actions.onPickContact,
             scanner = scanner,
         )
 
-        is Route.Add -> AddExpenseScreen(
+        is Route.QuickEntry -> QuickEntryScreen(
             initialPayee = route.payee,
             initialVpa = route.vpa,
-            initialAmount = route.amount,
-            initialTr = route.tr,
             onBack = { stack.removeAt(stack.lastIndex) },
-            onNext = { draft -> stack.add(Route.Review(draft)) },
-        )
-
-        is Route.Review -> ReviewPayScreen(
-            draft = route.draft,
-            budget = state.budget,
-            offers = state.offers,
-            onBack = { stack.removeAt(stack.lastIndex) },
-            onOverrideChange = actions.onSetOverride,
-            onProceed = { payable, app ->
-                val paid = route.draft.copy(amount = payable)
-                actions.onPay(paid, app)
-            },
-            onLogOnly = { payable ->
-                actions.onSaveExpense(route.draft.copy(amount = payable))
+            onPayAndLog = { draft ->
+                actions.onPayAndLog(draft)
                 stack.clear()
             },
+            onScan = { stack.add(Route.Scan) },
         )
 
         Route.Coach -> CoachScreen(
@@ -322,6 +327,49 @@ fun ExptrackedApp(
             onDismiss = { showNameDialog = false },
             onConfirm = { v -> actions.onSetUserName(v); showNameDialog = false },
         )
+    }
+
+    if (state.showPaymentConfirm && state.pendingExpense != null) {
+        val pending = state.pendingExpense
+        AlertDialog(
+            onDismissRequest = { actions.onDiscardPendingExpense() },
+            title = { Text("Payment completed?", fontFamily = ExpSerif) },
+            text = { Text("Did you complete the payment of ${pending.amount.asInr()} to ${pending.payee}?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    actions.onConfirmPendingExpense()
+                    stack.clear()
+                }) { Text("Yes, paid") }
+            },
+            dismissButton = {
+                TextButton(onClick = { actions.onDiscardPendingExpense() }) { Text("No, cancel") }
+            },
+        )
+    }
+
+    if (showPendingConfirmation) {
+        val pending = state.expenses.firstOrNull { it.pendingConfirmation }
+        val amount = pending?.amount ?: 0.0
+        val payee = pending?.payee ?: ""
+        ModalBottomSheet(
+            onDismissRequest = { showPendingConfirmation = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        ) {
+            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Logged ${amount.asInr()} to $payee — Did the payment go through?", color = ExpColors.Ink, fontFamily = ExpSerif)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Button(
+                        onClick = { actions.onConfirmPending(); showPendingConfirmation = false },
+                        modifier = Modifier.weight(1f),
+                    ) { Text("Yes, Keep") }
+                    OutlinedButton(
+                        onClick = { actions.onDiscardPending(); showPendingConfirmation = false },
+                        modifier = Modifier.weight(1f),
+                    ) { Text("No, Delete") }
+                }
+                Spacer(Modifier.height(8.dp))
+            }
+        }
     }
 }
 

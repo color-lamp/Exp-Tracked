@@ -254,6 +254,8 @@ fun ExptrackedPreviewHost() {
                 }
             },
             onSetOverride = { state = state.copy(budget = state.budget.copy(overrideEnabled = it)) },
+            onConfirmPending = { /* preview no-op */ },
+            onDiscardPending = { /* preview no-op */ },
             onSetLimit = { state = state.copy(budget = state.budget.copy(limit = it)) },
             onPickContact = { state = state.copy(pendingPayee = "Rohan Kulkarni") },
             onPayeeConsumed = { state = state.copy(pendingPayee = "") },

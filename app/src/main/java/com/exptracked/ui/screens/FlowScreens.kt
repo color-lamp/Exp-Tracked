@@ -150,7 +150,7 @@ import kotlin.math.roundToInt
  * ========================================================================================== */
 
 @Composable
-private fun RouteScaffold(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+fun RouteScaffold(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
     Column(
         modifier.fillMaxSize().background(ExpColors.Cream).navigationBarsPadding(),
         content = content,
@@ -158,7 +158,7 @@ private fun RouteScaffold(modifier: Modifier = Modifier, content: @Composable Co
 }
 
 @Composable
-private fun ScreenTopBar(title: String, onBack: () -> Unit, trailing: @Composable RowScope.() -> Unit = {}) {
+fun ScreenTopBar(title: String, onBack: () -> Unit, trailing: @Composable RowScope.() -> Unit = {}) {
     Row(
         Modifier.fillMaxWidth().background(ExpColors.Olive).statusBarsPadding().padding(horizontal = 8.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -170,7 +170,7 @@ private fun ScreenTopBar(title: String, onBack: () -> Unit, trailing: @Composabl
 }
 
 @Composable
-private fun PrimaryButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
+fun PrimaryButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
     Button(
         onClick = onClick,
         enabled = enabled,
@@ -271,6 +271,8 @@ fun AddExpenseScreen(
     initialVpa: String = "",
     initialAmount: String = "",
     initialTr: String = "",
+    initialMc: String = "",
+    initialRawUri: String = "",
     onBack: () -> Unit,
     onNext: (ExpenseDraft) -> Unit,
     modifier: Modifier = Modifier,
@@ -280,6 +282,8 @@ fun AddExpenseScreen(
     var payee by rememberSaveable { mutableStateOf(initialPayee) }
     var vpa by rememberSaveable { mutableStateOf(initialVpa) }
     var tr by rememberSaveable { mutableStateOf(initialTr) }
+    var mc by rememberSaveable { mutableStateOf(initialMc) }
+    var rawUri by rememberSaveable { mutableStateOf(initialRawUri) }
     var note by rememberSaveable { mutableStateOf("") }
     val amount = amountText.toDoubleOrNull()
     val canNext = amount != null && amount > 0 && payee.isNotBlank()
@@ -346,7 +350,7 @@ fun AddExpenseScreen(
         }
         PrimaryButton(
             "Next",
-            onClick = { onNext(ExpenseDraft(amount ?: 0.0, category, payee.trim(), note.trim(), vpa.trim(), tr.trim())) },
+            onClick = { onNext(ExpenseDraft(amount ?: 0.0, category, payee.trim(), note.trim(), vpa.trim(), tr.trim(), mc.trim(), rawUri)) },
             enabled = canNext,
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
         )
@@ -354,7 +358,7 @@ fun AddExpenseScreen(
 }
 
 @Composable
-private fun CategoryTile(category: ExpenseCategory, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun CategoryTile(category: ExpenseCategory, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Column(
         modifier
             .clip(RoundedCornerShape(16.dp))

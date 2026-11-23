@@ -9,6 +9,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.exptracked.ui.ExptrackedApp
 import com.exptracked.ui.model.ExptrackedActions
 import com.exptracked.ui.model.ExpenseDraft
+import com.exptracked.ui.model.UpiApp
 import com.exptracked.ui.screens.EditNameDialog
 import com.exptracked.ui.theme.ExptrackedTheme
 import com.exptracked.ui.viewmodel.ExpenseTrackerViewModel
@@ -31,8 +32,14 @@ class MainActivity : ComponentActivity() {
                         onPickContact = vm::pickContact,
                         onPayeeConsumed = vm::consumePayee,
                         onAskCoach = vm::askCoach,
-                        onPay = { draft, app -> vm.launchUpiPayment(draft.vpa.ifBlank { draft.payee }, draft.payee, draft.amount, app, draft.tr) },
+                        onPayAndLog = { draft -> vm.logPendingExpense(draft); vm.launchUpiAppHome(UpiApp.OTHER, draft.vpa.ifBlank { null }) },
                         onSetPreferredUpiApp = vm::setPreferredUpiApp,
+                        onSetPendingExpense = vm::setPendingExpense,
+                        onConfirmPendingExpense = vm::confirmPendingExpense,
+                        onDiscardPendingExpense = vm::discardPendingExpense,
+                        onAppResumed = vm::onAppResumed,
+                        onConfirmPending = vm::confirmPendingExpenses,
+                        onDiscardPending = vm::discardPendingExpenses,
                     ),
                 )
             }

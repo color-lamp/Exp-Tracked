@@ -61,6 +61,7 @@ data class ExpenseItem(
     val amount: Double,
     val category: ExpenseCategory,
     val dateTime: LocalDateTime,
+    val pendingConfirmation: Boolean = false,
 )
 
 data class ExpenseDraft(
@@ -70,6 +71,8 @@ data class ExpenseDraft(
     val note: String = "",
     val vpa: String = "",
     val tr: String = "",
+    val mc: String = "",
+    val rawUri: String = "",
     val dateTime: LocalDateTime = LocalDateTime.now(),
 )
 
@@ -166,6 +169,10 @@ data class DashboardUiState(
     /** Set from your contact-picker result; the Add Expense screen opens prefilled, then onPayeeConsumed fires. */
     val pendingPayee: String = "",
     val preferredUpiPackage: String? = null,
+    /** Expense draft awaiting confirmation after returning from a UPI app. */
+    val pendingExpense: ExpenseDraft? = null,
+    /** Whether to show the post-payment confirmation dialog. */
+    val showPaymentConfirm: Boolean = false,
     val themeMode: ThemeMode = ThemeMode.DARK,
 ) {
     val categoryTotals: List<CategoryTotal>
@@ -176,8 +183,8 @@ data class DashboardUiState(
 
 data class ExptrackedActions(
     val onPickContact: () -> Unit = {},
-    /** Launch the UPI intent here. The UI currently assumes success right after this returns. */
-    val onPay: (ExpenseDraft, UpiApp) -> Unit = { _, _ -> },
+    /** Log the expense as pending and launch the UPI app home. */
+    val onPayAndLog: (ExpenseDraft) -> Unit = { _ -> },
     /** Persist the expense (Room). Called after pay, or from "Log only". */
     val onSaveExpense: (ExpenseDraft) -> Unit = {},
     val onSetOverride: (Boolean) -> Unit = {},
@@ -189,6 +196,12 @@ data class ExptrackedActions(
     val onSetThemeMode: (ThemeMode) -> Unit = {},
     val onSetUserName: (String) -> Unit = {},
     val onSetPreferredUpiApp: (String?) -> Unit = {},
+    val onSetPendingExpense: (ExpenseDraft) -> Unit = {},
+    val onConfirmPendingExpense: () -> Unit = {},
+    val onDiscardPendingExpense: () -> Unit = {},
+    val onAppResumed: () -> Unit = {},
+    val onConfirmPending: () -> Unit = {},
+    val onDiscardPending: () -> Unit = {},
 )
 
 /* ============================================================================================
@@ -253,6 +266,13 @@ fun parseTr(raw: String): String = runCatching {
     val uri = Uri.parse(raw)
     if (uri.scheme != "upi" || uri.host != "pay") return@runCatching ""
     uri.getQueryParameter("tr")?.takeIf { it.isNotBlank() } ?: ""
+}.getOrDefault("")
+
+/** Extracts the merchant category code (mc) from a upi://pay?... QR payload. */
+fun parseMc(raw: String): String = runCatching {
+    val uri = Uri.parse(raw)
+    if (uri.scheme != "upi" || uri.host != "pay") return@runCatching ""
+    uri.getQueryParameter("mc")?.takeIf { it.isNotBlank() } ?: ""
 }.getOrDefault("")
 
 /** Gold that reads on the hero surfaces (teal in Light, charcoal in Dark). */

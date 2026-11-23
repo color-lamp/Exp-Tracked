@@ -90,6 +90,30 @@ class ExpenseTrackerViewModel(application: Application) : AndroidViewModel(appli
         prefs.edit().putString("preferredUpiPackage", packageName).apply()
     }
 
+    private var upiLaunched: Boolean = false
+
+    fun setPendingExpense(draft: ExpenseDraft) {
+        _state.update { it.copy(pendingExpense = draft, showPaymentConfirm = false) }
+    }
+
+    fun onAppResumed() {
+        if (upiLaunched && _state.value.pendingExpense != null) {
+            _state.update { it.copy(showPaymentConfirm = true) }
+            upiLaunched = false
+        }
+    }
+
+    fun confirmPendingExpense() {
+        _state.value.pendingExpense?.let { saveExpense(it) }
+        _state.update { it.copy(pendingExpense = null, showPaymentConfirm = false) }
+        upiLaunched = false
+    }
+
+    fun discardPendingExpense() {
+        _state.update { it.copy(pendingExpense = null, showPaymentConfirm = false) }
+        upiLaunched = false
+    }
+
     fun setOverride(enabled: Boolean) {
         _state.update { it.copy(budget = it.budget.copy(overrideEnabled = enabled)) }
         persist(_state.value)
@@ -119,48 +143,57 @@ class ExpenseTrackerViewModel(application: Application) : AndroidViewModel(appli
     }
 
     /**
-     * Redirects to a UPI app to pay [amount] to [payee] ([payeeName]).
-     * Builds a upi://pay?pa=...&pn=...&am=...&cu=INR URI and fires ACTION_VIEW.
-     * No state mutation, no persistence, no result parsing.
+     * Copies [vpa] to the clipboard (if non-blank) and launches the selected UPI app home.
      */
-    fun launchUpiPayment(payee: String, payeeName: String, amount: Double, upiApp: UpiApp, tr: String = "") {
+    fun launchUpiAppHome(upiApp: UpiApp, vpa: String?) {
         val context = getApplication<Application>()
-        val uri = Uri.parse(buildUpiUri(payee, payeeName, amount, tr))
-
-        // Query PackageManager for apps that can handle upi://pay URIs.
-        val upiIntent = Intent(Intent.ACTION_VIEW, uri)
-        val resolveInfos = context.packageManager.queryIntentActivities(upiIntent, 0)
-
-        if (resolveInfos.isNullOrEmpty()) {
-            android.widget.Toast.makeText(context, "No UPI app available", android.widget.Toast.LENGTH_SHORT).show()
-            return
+        if (!vpa.isNullOrBlank()) {
+            val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("UPI VPA", vpa))
+            android.widget.Toast.makeText(context, "UPI ID copied", android.widget.Toast.LENGTH_SHORT).show()
         }
 
+        // Layer 1 — Direct package resolution.
         val preferred = _state.value.preferredUpiPackage
-        val pkg = preferred?.takeIf { isPackageInstalled(context, it) } ?: upiApp.packageName
-        // Target the selected app specifically when a package is known.
-        if (pkg != null) {
-            try {
-                val targeted = Intent(Intent.ACTION_VIEW, uri).apply {
-                    setPackage(pkg)
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-                context.startActivity(targeted)
+        val candidates = mutableListOf<String>()
+        if (preferred != null && isPackageInstalled(context, preferred)) candidates.add(preferred)
+        val upiPkg = upiApp.packageName
+        if (upiPkg != null && isPackageInstalled(context, upiPkg)) candidates.add(upiPkg)
+        candidates.addAll(listOf(
+            "com.phonepe.app",
+            "com.phonepe.pulse",
+            "com.google.android.apps.nbu.paisa.user",
+            "net.one97.paytm",
+            "in.org.npci.upiapp",
+            "in.amazon.mShop.android.shopping",
+        ))
+        // Dedup preserving order.
+        val seen = mutableSetOf<String>()
+        val unique = candidates.filter { seen.add(it) }
+        for (pkg in unique) {
+            val launchIntent = context.packageManager.getLaunchIntentForPackage(pkg)
+            if (launchIntent != null) {
+                launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(launchIntent)
                 return
-            } catch (e: android.content.ActivityNotFoundException) {
-                // Selected app not installed — fall through to generic chooser.
             }
         }
 
-        // Fallback: generic upi:// intent (Android shows chooser / opens directly).
-        try {
-            val generic = Intent(Intent.ACTION_VIEW, uri).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        // Layer 2 — PackageManager query fallback.
+        val queryIntent = Intent(Intent.ACTION_VIEW, Uri.parse("upi://pay"))
+        val resolveInfos = context.packageManager.queryIntentActivities(queryIntent, 0)
+        if (!resolveInfos.isNullOrEmpty()) {
+            val pkgName = resolveInfos[0].activityInfo.packageName
+            val launchIntent = context.packageManager.getLaunchIntentForPackage(pkgName)
+            if (launchIntent != null) {
+                launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(launchIntent)
+                return
             }
-            context.startActivity(generic)
-        } catch (e: android.content.ActivityNotFoundException) {
-            android.widget.Toast.makeText(context, "No UPI app available", android.widget.Toast.LENGTH_SHORT).show()
         }
+
+        // Layer 3 — Clear error.
+        android.widget.Toast.makeText(context, "No UPI app found. Please install PhonePe, GPay, or Paytm.", android.widget.Toast.LENGTH_SHORT).show()
     }
 
     private fun isPackageInstalled(context: android.content.Context, packageName: String): Boolean {
@@ -174,38 +207,52 @@ class ExpenseTrackerViewModel(application: Application) : AndroidViewModel(appli
 
     companion object {
         private const val PREFS = "exp_tracked_prefs"
+    }
 
-        fun buildUpiUri(payee: String, payeeName: String, amount: Double, tr: String = ""): String {
-            val base = "upi://pay?pa=${uriEncode(payee)}&pn=${uriEncode(payeeName)}&am=$amount&cu=INR"
-            return if (tr.isNotBlank()) "$base&tr=${uriEncode(tr)}" else base
+    fun confirmPendingExpenses() {
+        val updated = _state.value.expenses.map { it.copy(pendingConfirmation = false) }
+        _state.update { it.copy(expenses = updated) }
+        persist(_state.value)
+    }
+
+    fun discardPendingExpenses() {
+        val current = _state.value
+        val pending = current.expenses.filter { it.pendingConfirmation }
+        val discardedAmount = pending.sumOf { it.amount }
+        val newExpenses = current.expenses.filterNot { it.pendingConfirmation }
+        val newBudget = current.budget.copy(spent = (current.budget.spent - discardedAmount).coerceAtLeast(0.0))
+        _state.update {
+            it.copy(
+                expenses = newExpenses,
+                budget = newBudget,
+                weeklySpend = computeWeeklySpend(newExpenses),
+                healthScore = computeHealth(newBudget),
+            )
         }
+        persist(_state.value)
+    }
 
-        private fun uriEncode(s: String): String {
-            val sb = StringBuilder()
-            for (ch in s) {
-                if (isUnreserved(ch)) {
-                    sb.append(ch)
-                } else {
-                    val bytes = ch.toString().toByteArray(Charsets.UTF_8)
-                    for (b in bytes) {
-                        sb.append('%')
-                        sb.append(HEX_DIGITS[(b.toInt() and 0xf0) shr 4])
-                        sb.append(HEX_DIGITS[b.toInt() and 0x0f])
-                    }
-                }
-            }
-            return sb.toString()
-        }
-
-        private fun isUnreserved(c: Char): Boolean =
-            (c in 'A'..'Z') || (c in 'a'..'z') || (c in '0'..'9') ||
-                c == '-' || c == '_' || c == '.' || c == '~' ||
-                c == '!' || c == '\'' || c == '(' || c == ')' || c == '*'
-
-        private val HEX_DIGITS = charArrayOf(
-            '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
-            'A', 'B', 'C', 'D', 'E', 'F',
+    fun logPendingExpense(draft: ExpenseDraft) {
+        val current = _state.value
+        val item = ExpenseItem(
+            System.nanoTime(),
+            draft.payee,
+            draft.amount,
+            draft.category,
+            draft.dateTime,
+            pendingConfirmation = true,
         )
+        val newExpenses = listOf(item) + current.expenses
+        val newBudget = current.budget.copy(spent = current.budget.spent + draft.amount)
+        _state.update {
+            it.copy(
+                expenses = newExpenses,
+                budget = newBudget,
+                weeklySpend = computeWeeklySpend(newExpenses),
+                healthScore = computeHealth(newBudget),
+            )
+        }
+        persist(_state.value)
     }
 
     fun saveExpense(draft: ExpenseDraft) {
@@ -244,6 +291,7 @@ class ExpenseTrackerViewModel(application: Application) : AndroidViewModel(appli
                         amount = o.getDouble("amount"),
                         category = ExpenseCategory.valueOf(o.getString("category")),
                         dateTime = LocalDateTime.parse(o.getString("dateTime")),
+                        pendingConfirmation = o.optBoolean("pendingConfirmation", false),
                     )
                 )
             }
@@ -261,6 +309,7 @@ class ExpenseTrackerViewModel(application: Application) : AndroidViewModel(appli
                     put("amount", e.amount)
                     put("category", e.category.name)
                     put("dateTime", e.dateTime.toString())
+                    put("pendingConfirmation", e.pendingConfirmation)
                 }
             )
         }

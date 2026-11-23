@@ -68,7 +68,22 @@ fun TransactionRow(item: ExpenseItem, modifier: Modifier = Modifier) {
         ) { Icon(item.category.icon, null, tint = item.category.color) }
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
-            Text(item.payee, color = ExpColors.Ink, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(item.payee, color = ExpColors.Ink, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (item.pendingConfirmation) {
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        "Pending",
+                        color = ExpColors.Gold,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(ExpColors.Gold.copy(alpha = 0.18f))
+                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                    )
+                }
+            }
             Text("${item.category.label} • ${item.dateTime.format(timeFmt)}", color = ExpColors.InkSoft, fontSize = 12.sp)
         }
         Text("-" + item.amount.asInr(), color = ExpColors.Ink, fontWeight = FontWeight.SemiBold)

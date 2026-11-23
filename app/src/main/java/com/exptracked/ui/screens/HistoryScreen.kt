@@ -189,6 +189,16 @@ fun HistoryScreen(expenses: List<ExpenseItem>, modifier: Modifier = Modifier) {
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         item { Text("Expense History", color = ExpColors.Ink, fontSize = 28.sp, fontFamily = ExpSerif, fontWeight = FontWeight.SemiBold) }
+        if (expenses.any { it.pendingConfirmation }) {
+            item {
+                Text(
+                    "Pending payments: " + expenses.filter { it.pendingConfirmation }.sumOf { it.amount }.asInr(),
+                    color = ExpColors.Gold,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+        }
         grouped.forEach { (date, items) ->
             item(key = "h-$date") {
                 Row(Modifier.fillMaxWidth().padding(top = 8.dp)) {
