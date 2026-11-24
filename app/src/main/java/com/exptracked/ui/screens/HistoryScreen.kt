@@ -211,17 +211,23 @@ fun HistoryScreen(expenses: List<ExpenseItem>, modifier: Modifier = Modifier) {
             )
         }
         item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(
-                    selected = selectedCategory == null,
-                    onClick = { selectedCategory = null },
-                    label = { Text("All") },
-                )
-                ExpenseCategory.entries.forEach { c ->
+            LazyRow(
+                Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 20.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                item {
+                    FilterChip(
+                        selected = selectedCategory == null,
+                        onClick = { selectedCategory = null },
+                        label = { Text("All", maxLines = 1) },
+                    )
+                }
+                items(ExpenseCategory.entries) { c ->
                     FilterChip(
                         selected = selectedCategory == c,
                         onClick = { selectedCategory = if (selectedCategory == c) null else c },
-                        label = { Text(c.label) },
+                        label = { Text(c.label, maxLines = 1) },
                     )
                 }
             }

@@ -270,9 +270,9 @@ fun ExptrackedApp(
                     AppTab.HOME -> HomeScreen(
                         state = state,
                         onSeeAllHistory = { tab = AppTab.HISTORY },
-                        onEditLimit = { showLimitDialog = true },
                         onOverrideChange = actions.onSetOverride,
                         onAvatarClick = { tab = AppTab.ACCOUNT },
+                        onOpenUpiApp = actions.onOpenUpiApp,
                     )
                     AppTab.HISTORY -> HistoryScreen(state.expenses)
                     AppTab.OFFERS -> OffersScreen(
@@ -288,14 +288,15 @@ fun ExptrackedApp(
                             afterPinAction = { showLimitDialog = true }
                             if (actions.onHasPin()) showPinVerify = true else showPinCreate = true
                         },
-                        onOpenCoach = { stack.add(Route.Coach) },
                         onThemeModeChange = actions.onSetThemeMode,
                         onEditName = { showNameDialog = true },
-                        onSetPreferredUpiApp = actions.onSetPreferredUpiApp,
                         onChangePin = {
                             if (actions.onHasPin()) { afterPinAction = null; showPinVerify = true }
                             else showPinCreate = true
                         },
+                        onSetBudgetCycle = actions.onSetBudgetCycle,
+                        onRenewBudget = actions.onRenewBudget,
+                        onSetDailyLimit = actions.onSetDailyLimit,
                     )
                 }
             }

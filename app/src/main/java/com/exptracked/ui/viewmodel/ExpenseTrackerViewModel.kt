@@ -37,14 +37,27 @@ class ExpenseTrackerViewModel(application: Application) : AndroidViewModel(appli
         val name = prefs.getString("userName", "") ?: ""
         val email = prefs.getString("email", "you@example.com") ?: "you@example.com"
         val limit = prefs.getFloat("budgetLimit", 15000f).toDouble()
-        val spent = prefs.getFloat("budgetSpent", 0f).toDouble()
+        var spent = prefs.getFloat("budgetSpent", 0f).toDouble()
         val override = prefs.getBoolean("overrideEnabled", false)
         val themeName = prefs.getString("themeMode", ThemeMode.DARK.name) ?: ThemeMode.DARK.name
         val themeMode = runCatching { ThemeMode.valueOf(themeName) }.getOrDefault(ThemeMode.DARK)
         val preferredUpiPackage = prefs.getString("preferredUpiPackage", null)
+        val dailyLimit = prefs.getFloat("dailyLimit", 0f).toDouble()
+        val budgetCycle = prefs.getString("budgetCycle", "monthly") ?: "monthly"
+        var cycleStartDate = prefs.getLong("cycleStartDate", System.currentTimeMillis())
         val expenses = loadExpenses(prefs.getString("expenses", "[]") ?: "[]")
         val weekly = computeWeeklySpend(expenses)
-        val budget = BudgetState(spent = spent, limit = limit, overrideEnabled = override)
+        var budget = BudgetState(spent = spent, limit = limit, dailyLimit = dailyLimit, overrideEnabled = override)
+        // Auto-renew check
+        val now = System.currentTimeMillis()
+        val cycleMs = if (budgetCycle == "yearly") 365L * 24 * 60 * 60 * 1000 else 30L * 24 * 60 * 60 * 1000
+        if (now - cycleStartDate >= cycleMs) {
+            spent = 0.0
+            cycleStartDate = now
+            budget = BudgetState(spent = 0.0, limit = limit, dailyLimit = dailyLimit, overrideEnabled = override)
+            prefs.edit().putFloat("budgetSpent", 0f).putLong("cycleStartDate", cycleStartDate).putInt("lastBudgetThreshold", 0).apply()
+        }
+        val dailySpent = expenses.filter { it.dateTime.toLocalDate() == java.time.LocalDate.now() }.sumOf { it.amount }
         return DashboardUiState(
             userName = if (name.isBlank()) "You" else name,
             email = email,
@@ -58,6 +71,9 @@ class ExpenseTrackerViewModel(application: Application) : AndroidViewModel(appli
             coachMessages = emptyList(),
             pendingPayee = "",
             preferredUpiPackage = preferredUpiPackage,
+            dailySpent = dailySpent,
+            budgetCycle = budgetCycle,
+            cycleStartDate = cycleStartDate,
             themeMode = themeMode,
         )
     }
@@ -69,8 +85,11 @@ class ExpenseTrackerViewModel(application: Application) : AndroidViewModel(appli
             putFloat("budgetLimit", s.budget.limit.toFloat())
             putFloat("budgetSpent", s.budget.spent.toFloat())
             putBoolean("overrideEnabled", s.budget.overrideEnabled)
+            putFloat("dailyLimit", s.budget.dailyLimit.toFloat())
             putString("themeMode", s.themeMode.name)
             putString("preferredUpiPackage", s.preferredUpiPackage)
+            putString("budgetCycle", s.budgetCycle)
+            putLong("cycleStartDate", s.cycleStartDate)
             putString("expenses", saveExpenses(s.expenses))
         }.apply()
     }
@@ -117,27 +136,45 @@ class ExpenseTrackerViewModel(application: Application) : AndroidViewModel(appli
             val channel = android.app.NotificationChannel(channelId, "Budget Alerts", android.app.NotificationManager.IMPORTANCE_DEFAULT)
             nm.createNotificationChannel(channel)
         }
-        if (ratio >= 1.0 && last < 100) {
+        // payment logged notification
+        // (fired separately; here handle thresholds)
+        val thresholds = listOf(50, 80, 90, 100)
+        val crossed = thresholds.filter { ratio * 100 >= it && last < it }.maxOrNull()
+        if (crossed != null) {
+            val text = when (crossed) {
+                100 -> "Budget exceeded! You've spent ${budget.spent.asInr()} of your ${budget.limit.asInr()} limit."
+                90 -> "You've used 90% of your monthly budget (${budget.spent.asInr()} spent of ${budget.limit.asInr()})"
+                80 -> "You've used 80% of your monthly budget (${budget.spent.asInr()} spent of ${budget.limit.asInr()})"
+                else -> "You've used 50% of your monthly budget (${budget.spent.asInr()} spent of ${budget.limit.asInr()})"
+            }
             val n = androidx.core.app.NotificationCompat.Builder(context, channelId)
                 .setSmallIcon(android.R.drawable.ic_dialog_info)
-                .setContentTitle("Budget exceeded")
-                .setContentText("Budget exceeded! You've spent ${budget.spent.asInr()} of your ${budget.limit.asInr()} limit.")
+                .setContentTitle("Budget alert")
+                .setContentText(text)
                 .setPriority(androidx.core.app.NotificationCompat.PRIORITY_DEFAULT)
                 .setAutoCancel(true)
                 .build()
-            nm.notify(1001, n)
-            prefs.edit().putInt("lastBudgetThreshold", 100).apply()
-        } else if (ratio >= 0.8 && last < 80) {
-            val n = androidx.core.app.NotificationCompat.Builder(context, channelId)
-                .setSmallIcon(android.R.drawable.ic_dialog_info)
-                .setContentTitle("Budget warning")
-                .setContentText("You've used 80% of your monthly budget (${budget.spent.asInr()} spent of ${budget.limit.asInr()})")
-                .setPriority(androidx.core.app.NotificationCompat.PRIORITY_DEFAULT)
-                .setAutoCancel(true)
-                .build()
-            nm.notify(1002, n)
-            prefs.edit().putInt("lastBudgetThreshold", 80).apply()
+            nm.notify(1000 + crossed, n)
+            prefs.edit().putInt("lastBudgetThreshold", crossed).apply()
         }
+    }
+
+    fun notifyPaymentLogged(payee: String, amount: Double) {
+        val context = getApplication<Application>()
+        val nm = context.getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+        val channelId = "budget_alerts"
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            val channel = android.app.NotificationChannel(channelId, "Budget Alerts", android.app.NotificationManager.IMPORTANCE_DEFAULT)
+            nm.createNotificationChannel(channel)
+        }
+        val n = androidx.core.app.NotificationCompat.Builder(context, channelId)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle("Payment logged")
+            .setContentText("Logged ${amount.asInr()} to $payee")
+            .setPriority(androidx.core.app.NotificationCompat.PRIORITY_DEFAULT)
+            .setAutoCancel(true)
+            .build()
+        nm.notify(System.currentTimeMillis().toInt(), n)
     }
 
     fun setOverride(enabled: Boolean) {
@@ -147,6 +184,28 @@ class ExpenseTrackerViewModel(application: Application) : AndroidViewModel(appli
 
     fun setLimit(limit: Double) {
         _state.update { it.copy(budget = it.budget.copy(limit = limit)) }
+        persist(_state.value)
+    }
+
+    fun setDailyLimit(limit: Double) {
+        _state.update { it.copy(budget = it.budget.copy(dailyLimit = limit)) }
+        persist(_state.value)
+    }
+
+    fun setBudgetCycle(cycle: String) {
+        _state.update { it.copy(budgetCycle = cycle) }
+        persist(_state.value)
+    }
+
+    fun renewBudget() {
+        val now = System.currentTimeMillis()
+        _state.update {
+            it.copy(
+                budget = it.budget.copy(spent = 0.0),
+                cycleStartDate = now,
+            )
+        }
+        prefs.edit().putFloat("budgetSpent", 0f).putLong("cycleStartDate", now).putInt("lastBudgetThreshold", 0).apply()
         persist(_state.value)
     }
 
@@ -257,11 +316,13 @@ class ExpenseTrackerViewModel(application: Application) : AndroidViewModel(appli
         fun applyLogPending(state: DashboardUiState, item: ExpenseItem): DashboardUiState {
             val newExpenses = listOf(item) + state.expenses
             val newBudget = state.budget.copy(spent = state.budget.spent + item.amount)
+            val dailySpent = newExpenses.filter { it.dateTime.toLocalDate() == java.time.LocalDate.now() }.sumOf { it.amount }
             return state.copy(
                 expenses = newExpenses,
                 budget = newBudget,
                 weeklySpend = computeWeeklySpend(newExpenses),
                 healthScore = computeHealth(newBudget),
+                dailySpent = dailySpent,
             )
         }
 
@@ -275,11 +336,13 @@ class ExpenseTrackerViewModel(application: Application) : AndroidViewModel(appli
             val discardedAmount = pending.sumOf { it.amount }
             val newExpenses = state.expenses.filterNot { it.pendingConfirmation }
             val newBudget = state.budget.copy(spent = (state.budget.spent - discardedAmount).coerceAtLeast(0.0))
+            val dailySpent = newExpenses.filter { it.dateTime.toLocalDate() == java.time.LocalDate.now() }.sumOf { it.amount }
             return state.copy(
                 expenses = newExpenses,
                 budget = newBudget,
                 weeklySpend = computeWeeklySpend(newExpenses),
                 healthScore = computeHealth(newBudget),
+                dailySpent = dailySpent,
             )
         }
     }
@@ -306,6 +369,7 @@ class ExpenseTrackerViewModel(application: Application) : AndroidViewModel(appli
         _state.update { applyLogPending(it, item) }
         persist(_state.value)
         checkBudgetAlert()
+        notifyPaymentLogged(draft.payee, draft.amount)
     }
 
     fun saveExpense(draft: ExpenseDraft) {
@@ -320,16 +384,19 @@ class ExpenseTrackerViewModel(application: Application) : AndroidViewModel(appli
         )
         val newExpenses = listOf(item) + current.expenses
         val newBudget = current.budget.copy(spent = current.budget.spent + draft.amount)
+        val dailySpent = newExpenses.filter { it.dateTime.toLocalDate() == java.time.LocalDate.now() }.sumOf { it.amount }
         _state.update {
             it.copy(
                 expenses = newExpenses,
                 budget = newBudget,
                 weeklySpend = computeWeeklySpend(newExpenses),
                 healthScore = computeHealth(newBudget),
+                dailySpent = dailySpent,
             )
         }
         persist(_state.value)
         checkBudgetAlert()
+        notifyPaymentLogged(draft.payee, draft.amount)
     }
 
     private fun loadExpenses(json: String): List<ExpenseItem> {

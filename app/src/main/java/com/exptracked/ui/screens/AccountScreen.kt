@@ -86,6 +86,7 @@ import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.DateRange
 import androidx.compose.material.icons.outlined.Contacts
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Edit
@@ -120,7 +121,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -185,20 +188,23 @@ private data class AccountRow(val label: String, val icon: ImageVector, val subt
 fun AccountScreen(
     state: DashboardUiState,
     onEditLimit: () -> Unit,
-    onOpenCoach: () -> Unit,
     onThemeModeChange: (ThemeMode) -> Unit = {},
     onEditName: () -> Unit = {},
-    onSetPreferredUpiApp: (String?) -> Unit = {},
     onChangePin: () -> Unit = {},
+    onSetBudgetCycle: (String) -> Unit = {},
+    onRenewBudget: () -> Unit = {},
+    onSetDailyLimit: (Double) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
-    var showPreferredDialog by rememberSaveable { mutableStateOf(false) }
+    var showCycleDialog by rememberSaveable { mutableStateOf(false) }
+    var showDailyLimitDialog by rememberSaveable { mutableStateOf(false) }
     val rows = listOf(
         AccountRow("Edit Name", Icons.Outlined.Person, state.userName, onEditName),
-        AccountRow("AI Money Coach", Icons.Outlined.AutoAwesome, "Ask about your spending", onOpenCoach),
         AccountRow("Budget Settings", Icons.Outlined.AccountBalanceWallet, "Limit ${state.budget.limit.asInr()}", onEditLimit),
+        AccountRow("Budget Cycle", Icons.Outlined.DateRange, state.budgetCycle.replaceFirstChar { it.uppercase() }, { showCycleDialog = true }),
+        AccountRow("Daily Limit", Icons.Outlined.Edit, if (state.budget.dailyLimit > 0) state.budget.dailyLimit.asInr() else "Not set", { showDailyLimitDialog = true }),
+        AccountRow("Renew Budget", Icons.Outlined.Settings, "Reset spent to 0", onRenewBudget),
         AccountRow("Change PIN", Icons.Outlined.Lock, "Protect budget edits", onChangePin),
-        AccountRow("Preferred UPI App", Icons.Outlined.Payments, state.preferredUpiPackage ?: "None (chooser)", { showPreferredDialog = true }),
     )
     LazyColumn(
         modifier.fillMaxSize(),
@@ -246,14 +252,43 @@ fun AccountScreen(
         }
     }
 
-    if (showPreferredDialog) {
-        PreferredUpiAppDialog(
-            currentPackage = state.preferredUpiPackage,
-            onDismiss = { showPreferredDialog = false },
-            onSelect = { pkg ->
-                onSetPreferredUpiApp(pkg)
-                showPreferredDialog = false
+    if (showCycleDialog) {
+        AlertDialog(
+            onDismissRequest = { showCycleDialog = false },
+            containerColor = ExpColors.SandLight,
+            title = { Text("Budget Cycle", fontFamily = ExpSerif) },
+            text = {
+                Column {
+                    listOf("monthly", "yearly").forEach { c ->
+                        Row(Modifier.fillMaxWidth().clickable { onSetBudgetCycle(c); showCycleDialog = false }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            RadioButton(selected = state.budgetCycle == c, onClick = { onSetBudgetCycle(c); showCycleDialog = false })
+                            Spacer(Modifier.width(8.dp))
+                            Text(c.replaceFirstChar { it.uppercase() }, color = ExpColors.Ink)
+                        }
+                    }
+                }
             },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { showCycleDialog = false }) { Text("Cancel") } },
+        )
+    }
+    if (showDailyLimitDialog) {
+        var text by remember { mutableStateOf(if (state.budget.dailyLimit > 0) state.budget.dailyLimit.toString() else "") }
+        AlertDialog(
+            onDismissRequest = { showDailyLimitDialog = false },
+            containerColor = ExpColors.SandLight,
+            title = { Text("Daily Limit", fontFamily = ExpSerif) },
+            text = {
+                OutlinedTextField(value = text, onValueChange = { v -> if (v.matches(Regex("""\\d{0,7}(\\.\\d{0,2})?"""))) text = v }, singleLine = true, colors = fieldColors())
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val v = text.toDoubleOrNull() ?: 0.0
+                    onSetDailyLimit(v)
+                    showDailyLimitDialog = false
+                }) { Text("Save") }
+            },
+            dismissButton = { TextButton(onClick = { showDailyLimitDialog = false }) { Text("Cancel") } },
         )
     }
 }

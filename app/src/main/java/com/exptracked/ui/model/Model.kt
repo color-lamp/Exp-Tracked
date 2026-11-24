@@ -73,6 +73,7 @@ data class ExpenseDraft(
     val tr: String = "",
     val mc: String = "",
     val rawUri: String = "",
+    val payAndLog: Boolean = true,
     val dateTime: LocalDateTime = LocalDateTime.now(),
 )
 
@@ -115,9 +116,22 @@ data class CoachMessage(val text: String, val fromUser: Boolean)
 
 enum class BudgetStatus { SAFE, WARNING, EXCEEDED }
 
+enum class DailyBudgetStatus { GREEN, YELLOW, RED }
+
+fun dailyBudgetStatus(spent: Double, limit: Double): DailyBudgetStatus {
+    if (limit <= 0.0) return DailyBudgetStatus.GREEN
+    val ratio = spent / limit
+    return when {
+        ratio >= 1.0 -> DailyBudgetStatus.RED
+        ratio >= 0.8 -> DailyBudgetStatus.YELLOW
+        else -> DailyBudgetStatus.GREEN
+    }
+}
+
 data class BudgetState(
     val spent: Double,
     val limit: Double,
+    val dailyLimit: Double = 0.0,
     val overrideEnabled: Boolean = false,
     val warningThreshold: Float = 0.8f,
 ) {
@@ -169,6 +183,9 @@ data class DashboardUiState(
     /** Set from your contact-picker result; the Add Expense screen opens prefilled, then onPayeeConsumed fires. */
     val pendingPayee: String = "",
     val preferredUpiPackage: String? = null,
+    val dailySpent: Double = 0.0,
+    val budgetCycle: String = "monthly",
+    val cycleStartDate: Long = System.currentTimeMillis(),
     val themeMode: ThemeMode = ThemeMode.DARK,
 ) {
     val categoryTotals: List<CategoryTotal>
@@ -194,6 +211,10 @@ data class ExptrackedActions(
     val onSetPreferredUpiApp: (String?) -> Unit = {},
     val onConfirmPending: () -> Unit = {},
     val onDiscardPending: () -> Unit = {},
+    val onOpenUpiApp: () -> Unit = {},
+    val onSetBudgetCycle: (String) -> Unit = {},
+    val onRenewBudget: () -> Unit = {},
+    val onSetDailyLimit: (Double) -> Unit = {},
     val onHasPin: () -> Boolean = { false },
     val onSetPin: (String) -> Unit = {},
     val onVerifyPin: (String) -> Boolean = { false },

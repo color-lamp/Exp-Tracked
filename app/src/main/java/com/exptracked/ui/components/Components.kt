@@ -90,40 +90,6 @@ fun TransactionRow(item: ExpenseItem, modifier: Modifier = Modifier) {
     }
 }
 
-@Composable
-fun PreferredUpiAppDialog(
-    currentPackage: String?,
-    onDismiss: () -> Unit,
-    onSelect: (String?) -> Unit,
-) {
-    val options = listOf(
-        null to "None (system chooser)",
-        "com.google.android.apps.nbu.paisa.user" to "Google Pay",
-        "com.phonepe.app" to "PhonePe",
-        "net.one97.paytm" to "Paytm",
-    )
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = ExpColors.SandLight,
-        title = { Text("Preferred UPI App", fontFamily = ExpSerif) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                options.forEach { (pkg, label) ->
-                    Row(
-                        Modifier.fillMaxWidth().clickable { onSelect(pkg) }.padding(vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        RadioButton(selected = currentPackage == pkg, onClick = { onSelect(pkg) })
-                        Spacer(Modifier.width(8.dp))
-                        Text(label, color = ExpColors.Ink)
-                    }
-                }
-            }
-        },
-        confirmButton = {},
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-    )
-}
 
 @OptIn(androidx.camera.core.ExperimentalGetImage::class)
 @Composable

@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -20,6 +21,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -107,9 +110,17 @@ fun QuickEntryScreen(
         }
         PrimaryButton(
             "Pay & Log",
-            onClick = { onPayAndLog(ExpenseDraft(amount ?: 0.0, category, payee.trim(), note.trim(), vpa = initialVpa)) },
+            onClick = { onPayAndLog(ExpenseDraft(amount ?: 0.0, category, payee.trim(), note.trim(), vpa = initialVpa, payAndLog = true)) },
             enabled = canPay,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
         )
+        OutlinedButton(
+            onClick = { onPayAndLog(ExpenseDraft(amount ?: 0.0, category, payee.trim(), note.trim(), vpa = initialVpa, payAndLog = false)) },
+            enabled = canPay,
+            modifier = Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 20.dp, vertical = 6.dp),
+            shape = RoundedCornerShape(18.dp),
+            border = BorderStroke(1.dp, ExpColors.Accent),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = ExpColors.Accent),
+        ) { Text("Already paid, just log") }
     }
 }

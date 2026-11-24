@@ -55,6 +55,7 @@ import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.DateRange
 import androidx.compose.material.icons.outlined.Contacts
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Edit
@@ -152,9 +153,9 @@ import kotlin.math.roundToInt
 fun HomeScreen(
     state: DashboardUiState,
     onSeeAllHistory: () -> Unit,
-    onEditLimit: () -> Unit,
     onOverrideChange: (Boolean) -> Unit,
     onAvatarClick: () -> Unit,
+    onOpenUpiApp: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(
@@ -163,7 +164,43 @@ fun HomeScreen(
         verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
         item { HomeHeader(state.greeting, state.userName, onAvatarClick) }
-        item { BudgetCard(state.budget, onOverrideChange, onEditLimit) }
+        item { BudgetCard(state.budget, onOverrideChange, onOpenUpiApp) }
+        if (state.budget.dailyLimit > 0) {
+            item {
+                val color = when (dailyBudgetStatus(state.dailySpent, state.budget.dailyLimit)) {
+                    DailyBudgetStatus.GREEN -> Color(0xFF4CAF50)
+                    DailyBudgetStatus.YELLOW -> ExpColors.Warning
+                    DailyBudgetStatus.RED -> ExpColors.Danger
+                }
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(10.dp).clip(CircleShape).background(color))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Daily: ${state.dailySpent.asInr()} / ${state.budget.dailyLimit.asInr()}", color = ExpColors.Ink, fontSize = 13.sp)
+                }
+            }
+        }
+        item {
+            var showCalendar by remember { mutableStateOf(false) }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                IconButton(onClick = { showCalendar = true }) { Icon(Icons.Outlined.DateRange, "Calendar", tint = ExpColors.Ink) }
+            }
+            if (showCalendar) {
+                val grouped = state.expenses.groupBy { it.dateTime.toLocalDate() }.mapValues { it.value.sumOf { e -> e.amount } }
+                AlertDialog(
+                    onDismissRequest = { showCalendar = false },
+                    containerColor = ExpColors.SandLight,
+                    title = { Text("Daily Spend", fontFamily = ExpSerif) },
+                    text = {
+                        LazyColumn(Modifier.height(300.dp)) {
+                            items(grouped.toList().sortedByDescending { it.first }) { (d, amt) ->
+                                Text("$d — ${amt.asInr()}", color = ExpColors.Ink)
+                            }
+                        }
+                    },
+                    confirmButton = { TextButton(onClick = { showCalendar = false }) { Text("Close") } },
+                )
+            }
+        }
         item { SpendingTrendCard(state.weeklySpend) }
         item { CategoryBreakdownCard(state.categoryTotals) }
         item { SectionTitle("Recent Transactions", "View All", onSeeAllHistory) }
@@ -195,7 +232,7 @@ fun HomeHeader(greeting: String, userName: String, onAvatarClick: () -> Unit) {
 fun BudgetCard(
     budget: BudgetState,
     onOverrideChange: (Boolean) -> Unit,
-    onEditLimit: () -> Unit,
+    onOpenUpiApp: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val accent = budget.status.onDark()
@@ -209,7 +246,7 @@ fun BudgetCard(
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Monthly Budget", color = ExpColors.OnOlive.copy(alpha = 0.8f), fontSize = 14.sp, modifier = Modifier.weight(1f))
-                Icon(Icons.Outlined.AccountBalanceWallet, null, tint = accent)
+                Icon(Icons.Outlined.AccountBalanceWallet, "Open UPI app", tint = accent, modifier = Modifier.clickable(onClick = onOpenUpiApp))
             }
             Row(verticalAlignment = Alignment.Bottom) {
                 Column(Modifier.weight(1f)) {
@@ -226,11 +263,7 @@ fun BudgetCard(
                         fontSize = 13.sp,
                     )
                 }
-                Row(Modifier.clickable(onClick = onEditLimit), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Limit ${budget.limit.asInr()}", color = ExpColors.OnOlive.copy(alpha = 0.8f), fontSize = 13.sp)
-                    Spacer(Modifier.width(4.dp))
-                    Icon(Icons.Outlined.Edit, "Edit limit", tint = ExpColors.OnOlive.copy(alpha = 0.8f), modifier = Modifier.size(14.dp))
-                }
+                Text("Limit ${budget.limit.asInr()}", color = ExpColors.OnOlive.copy(alpha = 0.8f), fontSize = 13.sp)
             }
             LimitProgressBar(budget.fraction, accent)
             Text("Spent ${budget.spent.asInr()}", color = ExpColors.OnOlive, fontSize = 13.sp)

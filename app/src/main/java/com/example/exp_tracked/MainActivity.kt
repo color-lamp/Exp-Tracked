@@ -36,10 +36,21 @@ class MainActivity : ComponentActivity() {
                         onPickContact = vm::pickContact,
                         onPayeeConsumed = vm::consumePayee,
                         onAskCoach = vm::askCoach,
-                        onPayAndLog = { draft -> vm.logPendingExpense(draft); vm.launchUpiAppHome(UpiApp.OTHER, draft.vpa.ifBlank { null }) },
+                        onPayAndLog = { draft ->
+                            if (draft.payAndLog) {
+                                vm.logPendingExpense(draft)
+                                vm.launchUpiAppHome(UpiApp.OTHER, draft.vpa.ifBlank { null })
+                            } else {
+                                vm.saveExpense(draft)
+                            }
+                        },
                         onSetPreferredUpiApp = vm::setPreferredUpiApp,
                         onConfirmPending = vm::confirmPendingExpenses,
                         onDiscardPending = vm::discardPendingExpenses,
+                        onOpenUpiApp = { vm.launchUpiAppHome(UpiApp.OTHER, null) },
+                        onSetBudgetCycle = vm::setBudgetCycle,
+                        onRenewBudget = vm::renewBudget,
+                        onSetDailyLimit = vm::setDailyLimit,
                         onHasPin = vm::hasPin,
                         onSetPin = vm::setPin,
                         onVerifyPin = vm::verifyPin,
