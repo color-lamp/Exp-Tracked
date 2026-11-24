@@ -64,6 +64,13 @@ data class ExpenseItem(
     val pendingConfirmation: Boolean = false,
 )
 
+data class AppNotification(
+    val title: String,
+    val message: String,
+    val timestamp: Long,
+    val type: String = "general",
+)
+
 data class ExpenseDraft(
     val amount: Double,
     val category: ExpenseCategory,
@@ -171,7 +178,6 @@ fun BudgetState.evaluate(newAmount: Double): ExpenseGate {
 
 data class DashboardUiState(
     val userName: String,
-    val email: String,
     val greeting: String,
     val budget: BudgetState,
     val expenses: List<ExpenseItem>,
@@ -186,6 +192,7 @@ data class DashboardUiState(
     val dailySpent: Double = 0.0,
     val budgetCycle: String = "monthly",
     val cycleStartDate: Long = System.currentTimeMillis(),
+    val notifications: List<AppNotification> = emptyList(),
     val themeMode: ThemeMode = ThemeMode.DARK,
 ) {
     val categoryTotals: List<CategoryTotal>
@@ -213,7 +220,6 @@ data class ExptrackedActions(
     val onDiscardPending: () -> Unit = {},
     val onOpenUpiApp: () -> Unit = {},
     val onSetBudgetCycle: (String) -> Unit = {},
-    val onRenewBudget: () -> Unit = {},
     val onSetDailyLimit: (Double) -> Unit = {},
     val onHasPin: () -> Boolean = { false },
     val onSetPin: (String) -> Unit = {},

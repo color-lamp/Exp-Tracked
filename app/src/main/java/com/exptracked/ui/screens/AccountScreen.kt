@@ -192,7 +192,6 @@ fun AccountScreen(
     onEditName: () -> Unit = {},
     onChangePin: () -> Unit = {},
     onSetBudgetCycle: (String) -> Unit = {},
-    onRenewBudget: () -> Unit = {},
     onSetDailyLimit: (Double) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
@@ -203,7 +202,6 @@ fun AccountScreen(
         AccountRow("Budget Settings", Icons.Outlined.AccountBalanceWallet, "Limit ${state.budget.limit.asInr()}", onEditLimit),
         AccountRow("Budget Cycle", Icons.Outlined.DateRange, state.budgetCycle.replaceFirstChar { it.uppercase() }, { showCycleDialog = true }),
         AccountRow("Daily Limit", Icons.Outlined.Edit, if (state.budget.dailyLimit > 0) state.budget.dailyLimit.asInr() else "Not set", { showDailyLimitDialog = true }),
-        AccountRow("Renew Budget", Icons.Outlined.Settings, "Reset spent to 0", onRenewBudget),
         AccountRow("Change PIN", Icons.Outlined.Lock, "Protect budget edits", onChangePin),
     )
     LazyColumn(
@@ -220,7 +218,6 @@ fun AccountScreen(
                 Spacer(Modifier.width(16.dp))
                 Column {
                     Text(state.userName, color = ExpColors.Ink, fontSize = 24.sp, fontFamily = ExpSerif, fontWeight = FontWeight.SemiBold)
-                    Text(state.email, color = ExpColors.InkSoft, fontSize = 13.sp)
                 }
             }
         }

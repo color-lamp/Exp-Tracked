@@ -19,7 +19,6 @@ class ExpenseTrackerViewModelLogicTest {
         )
         return DashboardUiState(
             userName = "You",
-            email = "a@b.com",
             greeting = "Hi",
             budget = BudgetState(spent = 150.0, limit = 1000.0),
             expenses = expenses,

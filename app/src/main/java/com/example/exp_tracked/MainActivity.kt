@@ -49,7 +49,6 @@ class MainActivity : ComponentActivity() {
                         onDiscardPending = vm::discardPendingExpenses,
                         onOpenUpiApp = { vm.launchUpiAppHome(UpiApp.OTHER, null) },
                         onSetBudgetCycle = vm::setBudgetCycle,
-                        onRenewBudget = vm::renewBudget,
                         onSetDailyLimit = vm::setDailyLimit,
                         onHasPin = vm::hasPin,
                         onSetPin = vm::setPin,

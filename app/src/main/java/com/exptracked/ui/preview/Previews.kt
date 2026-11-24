@@ -217,7 +217,6 @@ object SampleData {
 
     fun state(spent: Double = 12589.0, limit: Double = 15000.0, override: Boolean = false) = DashboardUiState(
         userName = "Naved",
-        email = "naved@example.com",
         greeting = "Good Morning",
         budget = BudgetState(spent = spent, limit = limit, overrideEnabled = override),
         expenses = expenses(),

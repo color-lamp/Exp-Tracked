@@ -35,7 +35,6 @@ class ExpenseTrackerViewModel(application: Application) : AndroidViewModel(appli
 
     private fun loadState(): DashboardUiState {
         val name = prefs.getString("userName", "") ?: ""
-        val email = prefs.getString("email", "you@example.com") ?: "you@example.com"
         val limit = prefs.getFloat("budgetLimit", 15000f).toDouble()
         var spent = prefs.getFloat("budgetSpent", 0f).toDouble()
         val override = prefs.getBoolean("overrideEnabled", false)
@@ -58,9 +57,13 @@ class ExpenseTrackerViewModel(application: Application) : AndroidViewModel(appli
             prefs.edit().putFloat("budgetSpent", 0f).putLong("cycleStartDate", cycleStartDate).putInt("lastBudgetThreshold", 0).apply()
         }
         val dailySpent = expenses.filter { it.dateTime.toLocalDate() == java.time.LocalDate.now() }.sumOf { it.amount }
+        // prune notifications older than 7 days
+        val sevenDays = 7L * 24 * 60 * 60 * 1000
+        val notifs = loadNotifications(prefs.getString("notifications", "[]") ?: "[]").filter { now - it.timestamp <= sevenDays }
+        // prune daily spend map older than 2 years
+        pruneDailySpendMap(now)
         return DashboardUiState(
             userName = if (name.isBlank()) "You" else name,
-            email = email,
             greeting = greetingFor(LocalDateTime.now().hour),
             budget = budget,
             expenses = expenses,
@@ -74,6 +77,7 @@ class ExpenseTrackerViewModel(application: Application) : AndroidViewModel(appli
             dailySpent = dailySpent,
             budgetCycle = budgetCycle,
             cycleStartDate = cycleStartDate,
+            notifications = notifs,
             themeMode = themeMode,
         )
     }
@@ -81,7 +85,6 @@ class ExpenseTrackerViewModel(application: Application) : AndroidViewModel(appli
     private fun persist(s: DashboardUiState) {
         prefs.edit().apply {
             putString("userName", s.userName)
-            putString("email", s.email)
             putFloat("budgetLimit", s.budget.limit.toFloat())
             putFloat("budgetSpent", s.budget.spent.toFloat())
             putBoolean("overrideEnabled", s.budget.overrideEnabled)
@@ -90,6 +93,7 @@ class ExpenseTrackerViewModel(application: Application) : AndroidViewModel(appli
             putString("preferredUpiPackage", s.preferredUpiPackage)
             putString("budgetCycle", s.budgetCycle)
             putLong("cycleStartDate", s.cycleStartDate)
+            putString("notifications", saveNotifications(s.notifications))
             putString("expenses", saveExpenses(s.expenses))
         }.apply()
     }
@@ -124,6 +128,31 @@ class ExpenseTrackerViewModel(application: Application) : AndroidViewModel(appli
         return md.digest(s.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
     }
 
+    fun addNotification(title: String, message: String, type: String) {
+        val n = com.exptracked.ui.model.AppNotification(title, message, System.currentTimeMillis(), type)
+        val updated = (listOf(n) + _state.value.notifications).take(200)
+        _state.update { it.copy(notifications = updated) }
+        persist(_state.value)
+    }
+
+    private fun pruneDailySpendMap(now: Long) {
+        val twoYears = 2L * 365 * 24 * 60 * 60 * 1000
+        val json = prefs.getString("dailySpendMap", "{}") ?: "{}"
+        val obj = org.json.JSONObject(json)
+        val keys = obj.keys().asSequence().toList()
+        for (k in keys) {
+            // key format yyyy-MM-dd; parse to millis
+            try {
+                val d = java.time.LocalDate.parse(k)
+                val ms = d.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+                if (now - ms > twoYears) obj.remove(k)
+            } catch (e: Exception) {
+                obj.remove(k)
+            }
+        }
+        prefs.edit().putString("dailySpendMap", obj.toString()).apply()
+    }
+
     fun checkBudgetAlert() {
         val context = getApplication<Application>()
         val budget = _state.value.budget
@@ -156,6 +185,7 @@ class ExpenseTrackerViewModel(application: Application) : AndroidViewModel(appli
                 .build()
             nm.notify(1000 + crossed, n)
             prefs.edit().putInt("lastBudgetThreshold", crossed).apply()
+            addNotification("Budget alert", text, "budget")
         }
     }
 
@@ -175,6 +205,7 @@ class ExpenseTrackerViewModel(application: Application) : AndroidViewModel(appli
             .setAutoCancel(true)
             .build()
         nm.notify(System.currentTimeMillis().toInt(), n)
+        addNotification("Payment logged", "Logged ${amount.asInr()} to $payee", "payment")
     }
 
     fun setOverride(enabled: Boolean) {
@@ -301,6 +332,36 @@ class ExpenseTrackerViewModel(application: Application) : AndroidViewModel(appli
                 totals[idx] += e.amount
             }
             return dayLabels.mapIndexed { i, label -> DailySpend(label, totals[i]) }
+        }
+
+        fun saveNotifications(notifs: List<com.exptracked.ui.model.AppNotification>): String {
+            val arr = org.json.JSONArray()
+            notifs.forEach { n ->
+                arr.put(org.json.JSONObject().apply {
+                    put("title", n.title)
+                    put("message", n.message)
+                    put("timestamp", n.timestamp)
+                    put("type", n.type)
+                })
+            }
+            return arr.toString()
+        }
+
+        fun loadNotifications(json: String): List<com.exptracked.ui.model.AppNotification> {
+            val list = mutableListOf<com.exptracked.ui.model.AppNotification>()
+            runCatching {
+                val arr = org.json.JSONArray(json)
+                for (i in 0 until arr.length()) {
+                    val o = arr.getJSONObject(i)
+                    list.add(com.exptracked.ui.model.AppNotification(
+                        title = o.getString("title"),
+                        message = o.getString("message"),
+                        timestamp = o.getLong("timestamp"),
+                        type = o.optString("type", "general"),
+                    ))
+                }
+            }
+            return list
         }
 
         fun computeHealth(budget: BudgetState): Int {

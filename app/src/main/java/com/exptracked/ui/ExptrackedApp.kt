@@ -7,6 +7,8 @@ import com.exptracked.ui.screens.OffersScreen
 import com.exptracked.ui.screens.AccountScreen
 import com.exptracked.ui.screens.ScanQrScreen
 import com.exptracked.ui.screens.AddExpenseScreen
+import com.exptracked.ui.screens.CalendarScreen
+import com.exptracked.ui.screens.NotificationsScreen
 import com.exptracked.ui.screens.QuickEntryScreen
 import com.exptracked.ui.screens.CoachScreen
 import com.exptracked.ui.components.EditLimitDialog
@@ -208,6 +210,8 @@ private enum class AppTab(val label: String, val icon: ImageVector) {
 private sealed interface Route {
     data object Scan : Route
     data class QuickEntry(val payee: String = "", val vpa: String = "") : Route
+    data object Calendar : Route
+    data object Notifications : Route
     data object Coach : Route
 }
 
@@ -273,6 +277,8 @@ fun ExptrackedApp(
                         onOverrideChange = actions.onSetOverride,
                         onAvatarClick = { tab = AppTab.ACCOUNT },
                         onOpenUpiApp = actions.onOpenUpiApp,
+                        onOpenCalendar = { stack.add(Route.Calendar) },
+                        onOpenNotifications = { stack.add(Route.Notifications) },
                     )
                     AppTab.HISTORY -> HistoryScreen(state.expenses)
                     AppTab.OFFERS -> OffersScreen(
@@ -295,7 +301,6 @@ fun ExptrackedApp(
                             else showPinCreate = true
                         },
                         onSetBudgetCycle = actions.onSetBudgetCycle,
-                        onRenewBudget = actions.onRenewBudget,
                         onSetDailyLimit = actions.onSetDailyLimit,
                     )
                 }
@@ -319,6 +324,18 @@ fun ExptrackedApp(
                 stack.clear()
             },
             onScan = { stack.add(Route.Scan) },
+        )
+
+        Route.Calendar -> CalendarScreen(
+            expenses = state.expenses,
+            dailyLimit = state.budget.dailyLimit,
+            monthlyLimit = state.budget.limit,
+            onBack = { stack.removeAt(stack.lastIndex) },
+        )
+
+        Route.Notifications -> NotificationsScreen(
+            notifications = state.notifications,
+            onBack = { stack.removeAt(stack.lastIndex) },
         )
 
         Route.Coach -> CoachScreen(

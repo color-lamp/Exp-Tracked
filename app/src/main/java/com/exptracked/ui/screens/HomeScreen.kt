@@ -156,6 +156,8 @@ fun HomeScreen(
     onOverrideChange: (Boolean) -> Unit,
     onAvatarClick: () -> Unit,
     onOpenUpiApp: () -> Unit = {},
+    onOpenCalendar: () -> Unit = {},
+    onOpenNotifications: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(
@@ -163,7 +165,7 @@ fun HomeScreen(
         contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
-        item { HomeHeader(state.greeting, state.userName, onAvatarClick) }
+        item { HomeHeader(state.greeting, state.userName, onAvatarClick, onOpenNotifications) }
         item { BudgetCard(state.budget, onOverrideChange, onOpenUpiApp) }
         if (state.budget.dailyLimit > 0) {
             item {
@@ -209,13 +211,13 @@ fun HomeScreen(
 }
 
 @Composable
-fun HomeHeader(greeting: String, userName: String, onAvatarClick: () -> Unit) {
+fun HomeHeader(greeting: String, userName: String, onAvatarClick: () -> Unit, onOpenNotifications: () -> Unit = {}) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text("$greeting,", color = ExpColors.InkSoft, fontSize = 14.sp)
             Text(userName, color = ExpColors.Ink, fontSize = 30.sp, fontFamily = ExpSerif, fontWeight = FontWeight.SemiBold)
         }
-        IconButton(onClick = { /* TODO notifications */ }) {
+        IconButton(onClick = onOpenNotifications) {
             Icon(Icons.Outlined.Notifications, "Notifications", tint = ExpColors.Ink)
         }
         Box(
