@@ -194,6 +194,9 @@ data class ExptrackedActions(
     val onSetPreferredUpiApp: (String?) -> Unit = {},
     val onConfirmPending: () -> Unit = {},
     val onDiscardPending: () -> Unit = {},
+    val onHasPin: () -> Boolean = { false },
+    val onSetPin: (String) -> Unit = {},
+    val onVerifyPin: (String) -> Boolean = { false },
 )
 
 /* ============================================================================================

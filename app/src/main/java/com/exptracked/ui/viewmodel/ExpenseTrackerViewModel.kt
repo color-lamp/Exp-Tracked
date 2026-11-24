@@ -90,6 +90,56 @@ class ExpenseTrackerViewModel(application: Application) : AndroidViewModel(appli
         prefs.edit().putString("preferredUpiPackage", packageName).apply()
     }
 
+    fun hasPin(): Boolean = prefs.getString("budgetPinHash", null) != null
+
+    fun setPin(pin: String) {
+        prefs.edit().putString("budgetPinHash", sha256(pin)).apply()
+    }
+
+    fun verifyPin(pin: String): Boolean {
+        return sha256(pin) == prefs.getString("budgetPinHash", null)
+    }
+
+    private fun sha256(s: String): String {
+        val md = java.security.MessageDigest.getInstance("SHA-256")
+        return md.digest(s.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
+    }
+
+    fun checkBudgetAlert() {
+        val context = getApplication<Application>()
+        val budget = _state.value.budget
+        if (budget.limit <= 0.0) return
+        val ratio = budget.spent / budget.limit
+        val last = prefs.getInt("lastBudgetThreshold", 0)
+        val nm = context.getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+        val channelId = "budget_alerts"
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            val channel = android.app.NotificationChannel(channelId, "Budget Alerts", android.app.NotificationManager.IMPORTANCE_DEFAULT)
+            nm.createNotificationChannel(channel)
+        }
+        if (ratio >= 1.0 && last < 100) {
+            val n = androidx.core.app.NotificationCompat.Builder(context, channelId)
+                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setContentTitle("Budget exceeded")
+                .setContentText("Budget exceeded! You've spent ${budget.spent.asInr()} of your ${budget.limit.asInr()} limit.")
+                .setPriority(androidx.core.app.NotificationCompat.PRIORITY_DEFAULT)
+                .setAutoCancel(true)
+                .build()
+            nm.notify(1001, n)
+            prefs.edit().putInt("lastBudgetThreshold", 100).apply()
+        } else if (ratio >= 0.8 && last < 80) {
+            val n = androidx.core.app.NotificationCompat.Builder(context, channelId)
+                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setContentTitle("Budget warning")
+                .setContentText("You've used 80% of your monthly budget (${budget.spent.asInr()} spent of ${budget.limit.asInr()})")
+                .setPriority(androidx.core.app.NotificationCompat.PRIORITY_DEFAULT)
+                .setAutoCancel(true)
+                .build()
+            nm.notify(1002, n)
+            prefs.edit().putInt("lastBudgetThreshold", 80).apply()
+        }
+    }
+
     fun setOverride(enabled: Boolean) {
         _state.update { it.copy(budget = it.budget.copy(overrideEnabled = enabled)) }
         persist(_state.value)
@@ -255,6 +305,7 @@ class ExpenseTrackerViewModel(application: Application) : AndroidViewModel(appli
         )
         _state.update { applyLogPending(it, item) }
         persist(_state.value)
+        checkBudgetAlert()
     }
 
     fun saveExpense(draft: ExpenseDraft) {
@@ -278,6 +329,7 @@ class ExpenseTrackerViewModel(application: Application) : AndroidViewModel(appli
             )
         }
         persist(_state.value)
+        checkBudgetAlert()
     }
 
     private fun loadExpenses(json: String): List<ExpenseItem> {

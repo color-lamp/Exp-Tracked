@@ -96,6 +96,7 @@ import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.outlined.AccountBalanceWallet
+import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.CheckCircle
@@ -220,6 +221,13 @@ fun ExptrackedApp(
     var tab by rememberSaveable { mutableStateOf(AppTab.HOME) }
     var showLimitDialog by rememberSaveable { mutableStateOf(false) }
     var showNameDialog by rememberSaveable { mutableStateOf(false) }
+    var showPinCreate by remember { mutableStateOf(false) }
+    var showPinVerify by remember { mutableStateOf(false) }
+    var pinInput by remember { mutableStateOf("") }
+    var pinError by remember { mutableStateOf<String?>(null) }
+    var attempts by remember { mutableStateOf(0) }
+    var cooldownUntil by remember { mutableStateOf(0L) }
+    var afterPinAction by remember { mutableStateOf<(() -> Unit)?>(null) }
     val stack = remember { mutableStateListOf<Route>() }
     val clipboard = LocalClipboardManager.current
     StatusBarIcons(darkIcons = stack.isEmpty() && !LocalExpPalette.current.isDark)
@@ -276,11 +284,18 @@ fun ExptrackedApp(
                     )
                     AppTab.ACCOUNT -> AccountScreen(
                         state = state,
-                        onEditLimit = { showLimitDialog = true },
+                        onEditLimit = {
+                            afterPinAction = { showLimitDialog = true }
+                            if (actions.onHasPin()) showPinVerify = true else showPinCreate = true
+                        },
                         onOpenCoach = { stack.add(Route.Coach) },
                         onThemeModeChange = actions.onSetThemeMode,
                         onEditName = { showNameDialog = true },
                         onSetPreferredUpiApp = actions.onSetPreferredUpiApp,
+                        onChangePin = {
+                            if (actions.onHasPin()) { afterPinAction = null; showPinVerify = true }
+                            else showPinCreate = true
+                        },
                     )
                 }
             }
@@ -352,6 +367,88 @@ fun ExptrackedApp(
             }
         }
     }
+
+    if (showPinCreate) {
+        AlertDialog(
+            onDismissRequest = { showPinCreate = false; pinInput = ""; pinError = null; afterPinAction = null },
+            title = { Text("Create PIN", fontFamily = ExpSerif) },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = pinInput,
+                        onValueChange = { v -> if (v.length <= 6 && v.all { it.isDigit() }) { pinInput = v; pinError = null } },
+                        label = { Text("4-6 digit PIN") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                        colors = fieldColors(),
+                    )
+                    pinError?.let { Text(it, color = ExpColors.Danger, fontSize = 12.sp) }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (pinInput.length in 4..6) {
+                        actions.onSetPin(pinInput)
+                        showPinCreate = false
+                        pinInput = ""
+                        pinError = null
+                        afterPinAction?.invoke()
+                        afterPinAction = null
+                    } else {
+                        pinError = "PIN must be 4-6 digits"
+                    }
+                }) { Text("Save") }
+            },
+            dismissButton = { TextButton(onClick = { showPinCreate = false; pinInput = ""; pinError = null; afterPinAction = null }) { Text("Cancel") } },
+        )
+    }
+
+    if (showPinVerify) {
+        val now = System.currentTimeMillis()
+        val inCooldown = now < cooldownUntil
+        AlertDialog(
+            onDismissRequest = { showPinVerify = false; pinInput = ""; pinError = null; afterPinAction = null },
+            title = { Text("Enter PIN", fontFamily = ExpSerif) },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = pinInput,
+                        onValueChange = { v -> if (v.length <= 6 && v.all { it.isDigit() }) { pinInput = v; pinError = null } },
+                        label = { Text("PIN") },
+                        singleLine = true,
+                        enabled = !inCooldown,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                        colors = fieldColors(),
+                    )
+                    pinError?.let { Text(it, color = ExpColors.Danger, fontSize = 12.sp) }
+                    if (inCooldown) {
+                        Text("Too many attempts. Try again later.", color = ExpColors.Danger, fontSize = 12.sp)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(enabled = !inCooldown, onClick = {
+                    if (actions.onVerifyPin(pinInput)) {
+                        showPinVerify = false
+                        pinInput = ""
+                        pinError = null
+                        attempts = 0
+                        afterPinAction?.invoke()
+                        afterPinAction = null
+                    } else {
+                        attempts++
+                        if (attempts >= 3) {
+                            cooldownUntil = System.currentTimeMillis() + 30000
+                            attempts = 0
+                        }
+                        pinError = "Incorrect PIN"
+                        pinInput = ""
+                    }
+                }) { Text("Verify") }
+            },
+            dismissButton = { TextButton(onClick = { showPinVerify = false; pinInput = ""; pinError = null; afterPinAction = null }) { Text("Cancel") } },
+        )
+    }
 }
 
 /* ============================================================================================
@@ -387,7 +484,7 @@ private fun ExpBottomBar(selected: AppTab, onSelect: (AppTab) -> Unit, onScan: (
                     .clickable(onClick = onScan),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Outlined.QrCodeScanner, "Scan QR to pay", tint = ExpColors.OnGold, modifier = Modifier.size(30.dp))
+                Icon(Icons.Outlined.Add, "Quick entry", tint = ExpColors.OnGold, modifier = Modifier.size(30.dp))
             }
         }
         Spacer(

@@ -180,15 +180,52 @@ import kotlin.math.roundToInt
 
 @Composable
 fun HistoryScreen(expenses: List<ExpenseItem>, modifier: Modifier = Modifier) {
-    val grouped = remember(expenses) {
-        expenses.sortedByDescending { it.dateTime }.groupBy { it.dateTime.toLocalDate() }.toList()
+    var query by remember { mutableStateOf("") }
+    var selectedCategory by remember { mutableStateOf<ExpenseCategory?>(null) }
+
+    val filtered = remember(expenses, query, selectedCategory) {
+        expenses.filter { e ->
+            (query.isBlank() || e.payee.contains(query, ignoreCase = true)) &&
+                (selectedCategory == null || e.category == selectedCategory)
+        }
     }
+    val grouped = remember(filtered) {
+        filtered.sortedByDescending { it.dateTime }.groupBy { it.dateTime.toLocalDate() }.toList()
+    }
+
     LazyColumn(
         modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         item { Text("Expense History", color = ExpColors.Ink, fontSize = 28.sp, fontFamily = ExpSerif, fontWeight = FontWeight.SemiBold) }
+        item {
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                label = { Text("Search payee") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = fieldColors(),
+            )
+        }
+        item {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = selectedCategory == null,
+                    onClick = { selectedCategory = null },
+                    label = { Text("All") },
+                )
+                ExpenseCategory.entries.forEach { c ->
+                    FilterChip(
+                        selected = selectedCategory == c,
+                        onClick = { selectedCategory = if (selectedCategory == c) null else c },
+                        label = { Text(c.label) },
+                    )
+                }
+            }
+        }
         if (expenses.any { it.pendingConfirmation }) {
             item {
                 Text(
@@ -199,14 +236,18 @@ fun HistoryScreen(expenses: List<ExpenseItem>, modifier: Modifier = Modifier) {
                 )
             }
         }
-        grouped.forEach { (date, items) ->
-            item(key = "h-$date") {
-                Row(Modifier.fillMaxWidth().padding(top = 8.dp)) {
-                    Text(dayHeader(date), color = ExpColors.InkSoft, fontSize = 13.sp, modifier = Modifier.weight(1f))
-                    Text("-" + items.sumOf { it.amount }.asInr(), color = ExpColors.InkSoft, fontSize = 13.sp)
+        if (filtered.isEmpty()) {
+            item { Text("No results found", color = ExpColors.InkSoft, fontSize = 14.sp) }
+        } else {
+            grouped.forEach { (date, items) ->
+                item(key = "h-$date") {
+                    Row(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                        Text(dayHeader(date), color = ExpColors.InkSoft, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                        Text("-" + items.sumOf { it.amount }.asInr(), color = ExpColors.InkSoft, fontSize = 13.sp)
+                    }
                 }
+                items(items, key = { it.id }) { TransactionRow(it) }
             }
-            items(items, key = { it.id }) { TransactionRow(it) }
         }
     }
 }

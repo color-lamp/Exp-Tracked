@@ -189,20 +189,16 @@ fun AccountScreen(
     onThemeModeChange: (ThemeMode) -> Unit = {},
     onEditName: () -> Unit = {},
     onSetPreferredUpiApp: (String?) -> Unit = {},
+    onChangePin: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     var showPreferredDialog by rememberSaveable { mutableStateOf(false) }
     val rows = listOf(
         AccountRow("Edit Name", Icons.Outlined.Person, state.userName, onEditName),
-        AccountRow("Preferred UPI App", Icons.Outlined.Payments, state.preferredUpiPackage ?: "None (chooser)", { showPreferredDialog = true }),
-        AccountRow("Linked Payment Apps", Icons.Outlined.Payments, "Google Pay, PhonePe, Paytm"),
-        AccountRow("Savings Goals", Icons.Outlined.Savings, "${state.savingsGoalCount} active goals"),
         AccountRow("AI Money Coach", Icons.Outlined.AutoAwesome, "Ask about your spending", onOpenCoach),
         AccountRow("Budget Settings", Icons.Outlined.AccountBalanceWallet, "Limit ${state.budget.limit.asInr()}", onEditLimit),
-        AccountRow("Notifications", Icons.Outlined.Notifications),
-        AccountRow("Privacy & Security", Icons.Outlined.Lock),
-        AccountRow("Help & Support", Icons.Outlined.Info),
-        AccountRow("Settings", Icons.Outlined.Settings),
+        AccountRow("Change PIN", Icons.Outlined.Lock, "Protect budget edits", onChangePin),
+        AccountRow("Preferred UPI App", Icons.Outlined.Payments, state.preferredUpiPackage ?: "None (chooser)", { showPreferredDialog = true }),
     )
     LazyColumn(
         modifier.fillMaxSize(),
